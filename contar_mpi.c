@@ -1,9 +1,8 @@
 /*
- * Autor: [Tu Nombre]
- * Práctica 1: Contar - DSAP
+ * Autor: Jaime Hernández Delgado
+ * DNI: 48776654W
  * 
- * Este programa implementa un algoritmo paralelo para contar ocurrencias de un número
- * en un vector, comparando su rendimiento con una versión secuencial.
+ * Práctica 1: Contar - DSAP
  */
 
  #include <stdio.h>
