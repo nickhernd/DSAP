@@ -78,7 +78,7 @@
          printf("%d %d (%.2f%%)", 
                 NUMBUSCADO, numVeces, 
                 (100.0 * numVeces) / (tamanyo * (double)REPETICIONES));
-         printf(" %f ", tsec); // tiempo secuencial 
+         printf("tsec %f ", tsec); // tiempo secuencial 
      }
  
      // Distribución del vector entre los procesos
@@ -133,7 +133,7 @@
          double eficiencia = speedup / nprocs;
  
          printf("%d ", nprocs); // numero de procesos
-         printf("%f ", tpar); // tiempo paralelo
+         printf("tpar %f ", tpar); // tiempo paralelo
          printf("%f ", speedup); // speedup
          printf("%f ", eficiencia); // eficiencia
      } else {
