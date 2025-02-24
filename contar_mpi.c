@@ -10,6 +10,8 @@
  #include <time.h>
  #include <mpi.h>
  
+//  ./mpirunR contar_mpi -np 3 -bind-to core host_file.txt 
+
  // Constantes definidas según el enunciado
  #define MAXENTERO 100      // Valor máximo de los datos donde buscar
  #define REPETICIONES 100000 // Número de repeticiones
@@ -33,7 +35,7 @@
      // El proceso 0 (root) lee el tamaño del vector
      if (myrank == 0) {
          do {
-             printf("Introduce el tamaño del vector (1-%d): ", MAXTAM);
+             printf("", MAXTAM);  // Tamaño del vector puesto   
              scanf("%d", &tamanyo);
          } while (tamanyo <= 0 || tamanyo > MAXTAM);
      }
@@ -73,10 +75,10 @@
          tf = clock();
          tsec = (double)(tf - t0) / CLOCKS_PER_SEC;
  
-         printf("Secuencial: El número %d aparece %d veces (%.2f%%)\n", 
+         printf("%d %d (%.2f%%)", 
                 NUMBUSCADO, numVeces, 
                 (100.0 * numVeces) / (tamanyo * (double)REPETICIONES));
-         printf("Tiempo secuencial: %f seg\n", tsec);
+         printf(" %f ", tsec); // tiempo secuencial 
      }
  
      // Distribución del vector entre los procesos
@@ -130,13 +132,10 @@
          double speedup = tsec / tpar;
          double eficiencia = speedup / nprocs;
  
-         printf("\nParalelo (%d procesos):\n", nprocs);
-         printf("El número %d aparece %d veces (%.2f%%)\n", 
-                NUMBUSCADO, numVeces, 
-                (100.0 * numVeces) / (tamanyo * (double)REPETICIONES));
-         printf("Tiempo paralelo: %f seg\n", tpar);
-         printf("Speed-up: %f\n", speedup);
-         printf("Eficiencia: %f\n", eficiencia);
+         printf("%d ", nprocs); // numero de procesos
+         printf("%f ", tpar); // tiempo paralelo
+         printf("%f ", speedup); // speedup
+         printf("%f ", eficiencia); // eficiencia
      } else {
          MPI_Send(&numVecesLocal, 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
      }
