@@ -35,8 +35,8 @@
      // El proceso 0 (root) lee el tamaño del vector
      if (myrank == 0) {
          do {
-             printf("", MAXTAM);  // Tamaño del vector puesto   
-             scanf("%d", &tamanyo);
+             printf("tamaño: ", MAXTAM);  // Tamaño del vector puesto   
+             scanf("%d ", &tamanyo);
          } while (tamanyo <= 0 || tamanyo > MAXTAM);
      }
  
@@ -75,7 +75,7 @@
          tf = clock();
          tsec = (double)(tf - t0) / CLOCKS_PER_SEC;
  
-         printf("%d %d (%.2f%%)", 
+         printf("numbuscado %d numVeces  %d porcentajeDeNumVeces (%.2f%%) ", 
                 NUMBUSCADO, numVeces, 
                 (100.0 * numVeces) / (tamanyo * (double)REPETICIONES));
          printf("tsec %f ", tsec); // tiempo secuencial 
@@ -129,13 +129,14 @@
          tpar = (double)(tf - t0) / CLOCKS_PER_SEC;
  
          // Cálculo y muestra de resultados
-         double speedup = tsec / tpar;
-         double eficiencia = speedup / nprocs;
- 
-         printf("%d ", nprocs); // numero de procesos
-         printf("tpar %f ", tpar); // tiempo paralelo
-         printf("%f ", speedup); // speedup
-         printf("%f ", eficiencia); // eficiencia
+         // double speedup = tsec / tpar;  // cambiar
+         double speedup = tpar / tsec;
+         double eficiencia = (speedup / nprocs) * 100;
+
+         printf("numprocesos: %d ", nprocs); // numero de procesos
+         printf("tpar: %f ", tpar); // tiempo paralelo
+         printf("seepUp: %f ", speedup); // speedup
+         printf("eficiencia: %f%%", eficiencia); // eficiencia
      } else {
          MPI_Send(&numVecesLocal, 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
      }
