@@ -1,7 +1,7 @@
 /*
  * Autor: Jaime Hernández Delgado
  * DNI: 48776654W
- * 
+ *
  * Práctica 1: Contar - DSAP
  */
 
@@ -9,15 +9,15 @@
  #include <stdlib.h>
  #include <time.h>
  #include <mpi.h>
- 
-//  ./mpirunR contar_mpi -np 3 -bind-to core host_file.txt 
+
+//  ./mpirunR contar_mpi -np 3 -bind-to core host_file.txt
 
  // Constantes definidas según el enunciado
  #define MAXENTERO 100      // Valor máximo de los datos donde buscar
  #define REPETICIONES 100000 // Número de repeticiones
  #define NUMBUSCADO 10      // Valor buscado en el conjunto de datos
  #define MAXTAM 100000      // Máximo tamaño del vector
- 
+
  int main(int argc, char *argv[]) {
      int myrank, nprocs;
      int tamanyo;           // Tamaño del vector
@@ -107,7 +107,7 @@
      MPI_Barrier(MPI_COMM_WORLD);
  
      // Inicio de la ejecución paralela
-     if (myrank == 0) t0 = clock();
+     if (myrank == 0) t0 = MPI_Wtime();
  
      // Búsqueda en la parte local del vector
      numVecesLocal = 0;
@@ -125,12 +125,11 @@
              MPI_Recv(&numVecesTemp, 1, MPI_INT, i, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
              numVeces += numVecesTemp;
          }
-         tf = clock();
+         tf = MPI_Wtime();
          tpar = (double)(tf - t0) / CLOCKS_PER_SEC;
  
          // Cálculo y muestra de resultados
-         // double speedup = tsec / tpar;  // cambiar
-         double speedup = tpar / tsec;
+         double speedup = tsec / tpar;  // cambiar
          double eficiencia = (speedup / nprocs) * 100;
 
          printf("numprocesos: %d ", nprocs); // numero de procesos
