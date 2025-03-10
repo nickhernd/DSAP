@@ -107,7 +107,7 @@
      MPI_Barrier(MPI_COMM_WORLD);
  
      // Inicio de la ejecución paralela
-     if (myrank == 0) t0 = MPI_Wtime();
+     if (myrank == 0) t0 = clock();
  
      // Búsqueda en la parte local del vector
      numVecesLocal = 0;
@@ -125,11 +125,11 @@
              MPI_Recv(&numVecesTemp, 1, MPI_INT, i, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
              numVeces += numVecesTemp;
          }
-         tf = MPI_Wtime();
+         tf = clock();
          tpar = (double)(tf - t0) / CLOCKS_PER_SEC;
  
          // Cálculo y muestra de resultados
-         double speedup = tsec / tpar;  // cambiar
+         double speedup = tsec / tpar;
          double eficiencia = (speedup / nprocs) * 100;
 
          printf("numprocesos: %d ", nprocs); // numero de procesos
