@@ -1,7 +1,7 @@
 /*
  * Autor: Jaime Hernández Delgado
  * DNI: 48776654W
- * 
+ *
  * Práctica 1: Contar - DSAP
  */
 
@@ -9,15 +9,15 @@
  #include <stdlib.h>
  #include <time.h>
  #include <mpi.h>
- 
-//  ./mpirunR contar_mpi -np 3 -bind-to core host_file.txt 
+
+//  ./mpirunR contar_mpi -np 3 -bind-to core host_file.txt
 
  // Constantes definidas según el enunciado
  #define MAXENTERO 100      // Valor máximo de los datos donde buscar
  #define REPETICIONES 100000 // Número de repeticiones
  #define NUMBUSCADO 10      // Valor buscado en el conjunto de datos
  #define MAXTAM 100000      // Máximo tamaño del vector
- 
+
  int main(int argc, char *argv[]) {
      int myrank, nprocs;
      int tamanyo;           // Tamaño del vector
@@ -35,18 +35,9 @@
      // El proceso 0 (root) lee el tamaño del vector
      if (myrank == 0) {
          do {
-             printf("Tamaño:", MAXTAM);  // Tamaño del vector puesto   
-             scanf("%d", &tamanyo);
+             printf("tamaño: ", MAXTAM);  // Tamaño del vector puesto   
+             scanf("%d ", &tamanyo);
          } while (tamanyo <= 0 || tamanyo > MAXTAM);
-     }
- 
-     // Enviar tamaño a todos los procesos usando Send/Recv
-     if (myrank == 0) {
-         for (int i = 1; i < nprocs; i++) {
-             MPI_Send(&tamanyo, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
-         }
-     } else {
-         MPI_Recv(&tamanyo, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
      }
  
      // Reserva de memoria para el vector
@@ -75,7 +66,7 @@
          tf = clock();
          tsec = (double)(tf - t0) / CLOCKS_PER_SEC;
  
-         printf("%d %d (%.2f%%)", 
+         printf("numbuscado %d numVeces  %d porcentajeDeNumVeces (%.2f%%) ", 
                 NUMBUSCADO, numVeces, 
                 (100.0 * numVeces) / (tamanyo * (double)REPETICIONES));
          printf("tsec %f ", tsec); // tiempo secuencial 
@@ -102,10 +93,7 @@
      } else {
          MPI_Recv(vectorLocal, elemsPorProc, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
      }
- 
-     // Sincronización antes de comenzar la medición paralela
-     MPI_Barrier(MPI_COMM_WORLD);
- 
+
      // Inicio de la ejecución paralela
      if (myrank == 0) t0 = clock();
  
@@ -130,12 +118,12 @@
  
          // Cálculo y muestra de resultados
          double speedup = tsec / tpar;
-         double eficiencia = speedup / nprocs;
- 
-         printf("nprocs: %d", nprocs); // numero de procesos
-         printf("tpar %f ", tpar); // tiempo paralelo
-         printf("speedup: %f", speedup); // speedup
-         printf("eficiencia :%f", eficiencia); // eficiencia
+         double eficiencia = (speedup / nprocs) * 100;
+
+         printf("numprocesos: %d ", nprocs); // numero de procesos
+         printf("tpar: %f ", tpar); // tiempo paralelo
+         printf("seepUp: %f ", speedup); // speedup
+         printf("eficiencia: %f%%", eficiencia); // eficiencia
      } else {
          MPI_Send(&numVecesLocal, 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
      }

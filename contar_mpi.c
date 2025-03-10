@@ -102,10 +102,7 @@
      } else {
          MPI_Recv(vectorLocal, elemsPorProc, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
      }
- 
-     // Sincronización antes de comenzar la medición paralela
-     MPI_Barrier(MPI_COMM_WORLD);
- 
+
      // Inicio de la ejecución paralela
      if (myrank == 0) t0 = clock();
  
