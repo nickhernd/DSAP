@@ -56,7 +56,7 @@
              primos = numero_primos_sec(n);
              t1 = MPI_Wtime();
              tiempo_secuencial = t1 - t0;
-             printf(" Primos menores que %10d: %10d. Tiempo secuencial: %5.2f segundos.\n", 
+             printf(" Primos menores que %10d: %10d. Tiempo secuencial: %f segundos.\n", 
                     n, primos, tiempo_secuencial);
          }
          
@@ -87,18 +87,18 @@
          
          // El proceso 0 muestra los resultados
          if (myrank == 0) {
-             printf(" Primos menores que %10d: %10d. Tiempo paralelo : %5.2f s. Tiempos parciales: ", 
+             printf(" Primos menores que %10d: %10d. Tiempo paralelo : %f s. Tiempos parciales: ", 
                     n, primos, tiempo_paralelo);
                     
              for (int i = 0; i < nprocs; i++) {
-                 printf("%.2f ", tiempos_parciales[i]);
+                 printf("%f ", tiempos_parciales[i]);
              }
              printf("\n");
              
              // Calculamos y mostramos el speed-up y la eficiencia
              double speedup = tiempo_secuencial / tiempo_paralelo;
              double eficiencia = speedup / nprocs;
-             printf(" Speed-up: %.2f, Eficiencia: %.2f\n\n", speedup, eficiencia);
+             printf(" Speed-up: %f, Eficiencia: %f\n\n", speedup, eficiencia);
          }
          
          // Pasamos al siguiente valor de n

@@ -1,0 +1,120 @@
+#!/bin/bash
+#
+################# NO MODIFICAR NADA POR DEBAJO DE ESTA LINEA #########################################################
+USUARIO=$USU_UACLOUD
+# Directorio destino en los hosts
+directorio_destino="/tmp/$USUARIO"
+# Captura el nombre de este script
+nombre_del_script=$(basename "$0")
+# Muestra información de uso si el número de parámetros es distinto de 1 y 2
+if [ $# -ne 2 ] && [ $# -ne 1 ];then
+  if [ $# -ge 3 ];then
+    echo -e "\nDemasiados parámetros"
+  fi
+  echo -e "\nUso: $nombre_del_script [archivo_a_copiar] [archivo_hosts]"
+  echo -e "\t Realiza una copia remota de [archivo_a_copiar] en los hosts indicados por cada una de las líneas del archivo [archivo_hosts]."
+  echo -e "\t La copia se realiza en la carpeta $directorio_destino de cada host remoto."
+  echo -e "\t La lista de hosts puede contener el host local en cuyo caso la copia se hace localmente."
+  echo -e "\t Si el parámetro [archivo_hosts] se omite, hace la copia en todos los nodos del laboratotio L01 que estén operativos (clL01-1, clL01-2,..., clL01-25)."
+  echo -e "\t Si el parámetro [archivo_hosts] no es una archivo pero sí un host válido (clL01-1, clL01-2,..., clL01-25), hace la copia en ese host.\n"
+  exit 1
+fi
+
+if [ ! -f $1 ];then
+  echo -e "\nEl archivo $1 no existe\n"
+  exit 1
+fi
+
+# Si hay 2 parámetros y el segundo es un archivo, lo toma como archivo de hosts. 
+# Si el segundo no es un archivo, verifica que sea un nodo válido (haciendo ping). La variable copiaUnica me dice si estoy en ese caso
+if [ $# -eq 2 ] && [ ! -f $2 ];then
+  if ! ping -c 1 -W 1 "$2" > /dev/null 2>&1 ; then 
+     echo -e "\nEl archivo $2 no existe o el host $2 no es accesible\n"
+     exit 1
+  else
+    copiaUnica=1;
+  fi
+fi
+
+# Archivo a copiar
+archivo_a_copiar=$1
+
+declare -A array # Array que va a contener el nombre de los hosts
+# Si hay dos parametros y el segundo existe (el archivo hostfile), se leen sus lineas y se almacenan en el array. 
+# En caso contrario, el array contiene los nombres de los hosts del laboratorio L01 (clL01-1, clL01-2,..., clL01-25).
+if [ $# -eq 2 ] && [ -f $2 ];then
+  archivo_hosts=$2; # Nombre del archivo que contiene los hosts
+  let i=0
+  while IFS=': ' read -ra host_array; # separo la cadena de cada línea usando los delimitadores : y espacio (se pueden añadir más) 
+  do
+    array[$i]=${host_array[0]}
+    i=$(($i+1))
+  done < "$archivo_hosts"
+elif [ $copiaUnica -eq 1 ]; then
+  array[0]="$2"
+else
+  for (( i=1; i<=25; i++ ))
+  do
+	  array[$(($i-1))]="clL01-$i"
+  done
+fi
+
+# Usuario con permisos ssh --> usuariocp
+user_ssh=usuariocp
+
+echo -e "\n***************************************************************************************\n*"
+echo -e "*\t Copias realizadas:\n*"
+
+# Iteramos sobre cada elemento del array que contendrá los hosts.
+# En cada uno de ellos se copiará el archivo archivo_a_copiar=$1 en /tmp/$USUARIO.
+for (( i=0; i<${#array[*]}; i++ ))
+do
+  host=${array[$i]}
+  # Vemos si el host es visible
+  if ! ping -c 1 -W 1 "$host" > /dev/null 2>&1 ; then 
+     echo -e "*\t    Host "$host" no disponible"
+     continue
+  fi
+  export directorio_destino
+  export host
+
+  if [ "$host" = "$(hostname)" ]; then
+    # Si el host es el local, hacemos todo en local (sin ssh): comprobamos si el directorio $directorio_destino existe 
+    # y copiamos en local (cp) el $archivo_a_copiar en $directorio_destino.
+    # Uso la variable $codigo
+    codigo="if [ ! -d \"$directorio_destino\" ]; then
+        echo -e \"*\t   * Directorio $directorio_destino creado localmente en nodo $host\";
+        mkdir -p \"$directorio_destino\";    
+      fi;
+      cp $archivo_a_copiar $directorio_destino"
+    # Y ahora lo lanzo desde el usuario $user_ssh
+    su -c "$codigo" $user_ssh
+  else
+    # Si el host es remoto, hacemos todo usando ssh: comprobamos si el directorio $directorio_destino existe 
+    # y copiamos en remoto (scp) el $archivo_a_copiar en $directorio_destino.
+    # Uso la variable $codigo_ssh
+    codigo_ssh="ssh $host 'if [ ! -d \"$directorio_destino\" ]; then
+        echo -e \"*\t   * Directorio $directorio_destino creado remotamente en nodo $host\";
+        mkdir -p \"$directorio_destino\";
+      fi';
+      scp \"$archivo_a_copiar\" \"$host\":\"$directorio_destino\" > /dev/null 2>&1"
+    # Y ahora lo lanzo desde el usuario $user_ssh
+    su -c "$codigo_ssh" $user_ssh
+  fi
+
+  # Verificar el estado de la copia
+  if [ $? -eq 0 ]; then
+    if [ "$host" = "$(hostname)" ]; then
+	   echo -e "*\t Archivo \"$archivo_a_copiar\" copiado localmente en $host:$directorio_destino"
+    else
+      echo -e "*\t Archivo \"$archivo_a_copiar\" copiado remotamente en $host:$directorio_destino"
+    fi
+  else
+    if [ "$host" == "$(hostname)" ]; then
+      echo -e "*\t Error al copiar localmente el archivo \"$archivo_a_copiar\" en $host\n*"
+    else
+      echo -e "*\t Error al copiar remotamente el archivo \"$archivo_a_copiar\" en $host\n*"
+    fi
+  fi
+done
+echo -e "*\n***************************************************************************************"

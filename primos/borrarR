@@ -1,0 +1,99 @@
+#!/bin/bash
+#
+################# NO MODIFICAR NADA POR DEBAJO DE ESTA LINEA #########################################################
+USUARIO=$USU_UACLOUD
+# Directorio destino en los hosts
+directorio_destino="/tmp/$USUARIO"
+# Captura el nombre de este script
+nombre_del_script=$(basename "$0")
+
+# Muestra información de uso si el número de parámetros es distinto de 1 y 2
+if [ $# -eq 0 ] || [ $# -ge 2 ];then
+  if [ $# -ge 2 ];then
+    echo -e "\nDemasiados parámetros"
+  fi
+  echo -e "\nUso: $nombre_del_script [archivo_hosts]"
+  echo -e "\t Borra la carpeta $directorio_destino en los hosts indicados por cada una de las líneas del archivo [archivo_hosts]."
+  echo -e "\t La lista de hosts puede contener el host local en cuyo caso el borrado se hace localmente."
+  echo -e "\t Si el parámetro [archivo_hosts] no es una archivo pero sí un host válido (clL01-1, clL01-2,..., clL01-25), borra la carpeta en ese host."
+  echo -e "Uso: $nombre_del_script -all"
+  echo -e "\t Si se usa como parámetro la opción -all, se borra la carpeta $directorio_destino en todos los nodos del laboratotio L01 que estén operativos (clL01-1, clL01-2,..., clL01-25).\n"
+  exit 1
+fi
+
+# Compruebo que el archivo de hosts exista
+if [ $1 != "-all" ] && [ ! -f $1 ];then
+  if ! ping -c 1 -W 1 "$1" > /dev/null 2>&1 ; then 
+     echo -e "\nEl archivo $1 no existe o el host $1 no es accesible\n"
+     exit 1
+  else
+    copiaUnica=1;
+  fi
+fi
+
+declare -A array # Array que va a contener el nombre de los hosts
+# Si hay un parametro y existe (el archivo hostfile), se leen sus lineas y se almacenan en el array. 
+if [ $# -eq 1 ] && [ -f $1 ];then
+  archivo_hosts=$1
+  let i=0
+  while IFS=': ' read -ra host_array; # separo la cadena de cada línea usando los delimitadores : y espacio (se pueden añadir más) 
+  do
+    array[$i]=${host_array[0]}
+    i=$(($i+1))
+  done < "$archivo_hosts"
+fi
+# Si el único parámetro es la opción -all, el array contendrá los nombres de los hosts del laboratorio L01 (clL01-1, clL01-2,..., clL01-25).
+if [ $# -eq 1 ] && [ $1 == "-all" ];then
+  for (( i=1; i<=25; i++ ))
+  do
+    array[$(($i-1))]="clL01-$i"
+  done
+fi
+
+# Si hay un parametro y corresponde a un nodo, se almacena en el array. 
+if [ $# -eq 1 ] && [ $copiaUnica -eq 1 ]; then
+  array[0]="$1"
+fi
+
+# Usuario con permisos ssh --> usuariocp
+user_ssh=usuariocp
+
+echo -e "\n***************************************************************************************\n*"
+echo -e "*\t Carpetas eliminadas:\n*"
+
+# Iteramos sobre cada elemento del array que contendrá los hosts.
+# En cada uno de ellos se borrará la carpeta /tmp/$USUARIO.
+for (( i=0; i<${#array[*]}; i++ ))
+do
+  host=${array[$i]}
+  # Vemos si el host es visible
+  if ! ping -c 1 -W 1 "$host" > /dev/null 2>&1 ; then 
+     echo -e "*\t    Host "$host" no disponible"
+     continue
+  fi
+  export directorio_destino
+  export host
+
+  if [ "$host" = "$(hostname)" ]; then
+    # Si el host es el local, hacemos todo en local (sin ssh): comprobamos si el directorio $directorio_destino existe 
+    # y borramos en local (rm) el $directorio_destino.
+    # Uso la variable $codigo
+    codigo="if [ -d \"$directorio_destino\" ]; then
+        rm -fr $directorio_destino
+        echo -e \"*\t Carpeta \"$directorio_destino\" borrada localmente en $host:$directorio_destino\"
+      fi"
+    # Y ahora lo lanzo desde el usuario $user_ssh
+    su -c "$codigo" $user_ssh
+  else
+    # Si el host es remoto, hacemos todo usando ssh: comprobamos si el directorio $directorio_destino existe 
+    # y borramos en remoto (ssh) el $directorio_destino.
+    # Uso la variable $codigo_ssh
+    codigo_ssh="ssh $host 'if [ -d \"$directorio_destino\" ]; then
+        rm -fr $directorio_destino
+        echo -e \"*\t Carpeta \"$directorio_destino\" borrada remotamente en $host:$directorio_destino\"
+      fi'"
+    # Y ahora lo lanzo desde el usuario $user_ssh
+    su -c "$codigo_ssh" $user_ssh
+  fi  
+done
+echo -e "*\n***************************************************************************************"

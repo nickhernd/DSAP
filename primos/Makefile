@@ -4,7 +4,7 @@
 CC = mpicc
 
 # Opciones de compilación
-CFLAGS = -Wall -O2
+CFLAGS = -Wall -O
 
 # Librerías
 LIBS = -lm

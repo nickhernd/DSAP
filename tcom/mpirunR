@@ -1,0 +1,29 @@
+#!/bin/bash
+#
+################# NO MODIFICAR NADA POR DEBAJO DE ESTA LINEA #########################################################
+USER=$USU_UACLOUD
+if [ $# -eq 0 ];then            
+   echo -e "\nScript que sustituye a mpirun para ejecuciones sobre varios nodos en el laboratorio L01."
+   echo -e "\nInternamente ejecuta mpirun con los mismos parámetros introducidos, pero asegurando permisos de acceso a ssh."
+   echo -e "\nSi se desea una ejecución de mpi en local, no debe usarse este script, sino el original mpirun."
+   echo -e "\nNo se ha suministrado archivo ejecutable. Con -h se obtienen las opciones de uso.\n"
+   exit 1
+fi
+
+if [ $# -eq 1 ] && [ $@ == "-h" ]; then
+	mpirun -h
+	exit 1
+fi
+
+# Capturar todos los parámetros
+param="$@"
+
+# Usuario con el que ejecutar mpirun
+usuario="usuariocp"
+
+# Ruta donde está mpirun
+path_mpirun=$(dirname $(which mpirun))
+
+# Ejecutar mpirun con "su -c $usuario"
+# Y se añade al PATH la ubicacion de mpirun ya que "su -c $usuario" no carga el .bashrc de $usuario
+su -c "export PATH=$path_mpirun:$PATH; mpirun -wdir /tmp/$USER $param" $usuario
