@@ -62,7 +62,7 @@ int main(int argc, char *argv[]) {
         // Sincronizamos todos los procesos antes de comenzar la versión paralela
         MPI_Barrier(MPI_COMM_WORLD);
         
-        // Comenzamos a medir el tiempo de la versión paralela
+        // Comenzamos a medir el tiempo de la versión paralela 
         t0 = MPI_Wtime();
         
         // Cada proceso calcula su parte
