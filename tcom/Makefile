@@ -1,13 +1,11 @@
 CC = mpicc
-CFLAGS = -Wall -O3 -lm
-TARGET = tcom
+CFLAGS = -Wall -O3
+LDFLAGS = -lm
 
-all: $(TARGET)
+all: tcom
 
-$(TARGET): $(TARGET).c
-	$(CC) $(CFLAGS) -o $@ $<
+tcom: tcom.c
+	$(CC) $(CFLAGS) -o $@ $< $(LDFLAGS)
 
 clean:
-	rm -f $(TARGET) *.o resultados_tcom.csv
-
-.PHONY: all clean
+	rm -f tcom resultados_tcom.csv
