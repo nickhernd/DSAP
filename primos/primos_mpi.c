@@ -42,10 +42,6 @@
          MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
      }
      
-<<<<<<< HEAD
-=======
-     // Solo el proceso root muestra información inicial
->>>>>>> 9fa2a5c5164e452941f0db5adbdfe21fea949be6
      if (myrank == 0) {
          printf("\n");
          printf("Programa PARALELO para contar el número de primos menores que un valor.\n");
@@ -109,12 +105,8 @@
      free(tiempos_parciales);
      MPI_Finalize();
      
-<<<<<<< HEAD
      return 0;
-=======
-     return EXIT_SUCCESS;
->>>>>>> 9fa2a5c5164e452941f0db5adbdfe21fea949be6
- }
+}
  
 
  int numero_primos(int n, int myrank, int nprocs) {
@@ -139,7 +131,6 @@
      return total;
  }
  
-<<<<<<< HEAD
  int esPrimo(int m) {
      if (m <= 1) return 0;
      if (m == 2) return 1;
@@ -148,22 +139,9 @@
      int limite = (int)sqrt(m) + 1;
      for (int i = 3; i <= limite; i += 2) {
          if (m % i == 0) {
-=======
- int esPrimo(int p) {
-     if (p <= 1) return 0;
-     if (p == 2) return 1;
-     if (p % 2 == 0) return 0;
-     
-     int limite = (int)sqrt(p) + 1;
-     for (int i = 3; i <= limite; i += 2) {
-         if (p % i == 0) {
->>>>>>> 9fa2a5c5164e452941f0db5adbdfe21fea949be6
              return 0;
          }
      }
      return 1;
-<<<<<<< HEAD
+
  }
-=======
- }
->>>>>>> 9fa2a5c5164e452941f0db5adbdfe21fea949be6
