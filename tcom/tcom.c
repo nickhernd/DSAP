@@ -1,8 +1,8 @@
 /**
- * PRÁCTICA 3: tcom - Evaluación de los parámetros del modelo de coste de comunicaciones
- * 
- * Programa para estimar los parámetros β (latencia) y τ (tiempo por byte) del modelo
- * de coste de comunicaciones en MPI usando el esquema ping-pong.
+ * PRÁCTICA 3: tcom
+ *
+ * Autor: Jaime Hernández Delgado
+ * DNI: 4876654W
  */
 
 #include <stdio.h>
@@ -10,34 +10,31 @@
 #include <mpi.h>
 #include <math.h>
 
-// Configuración de las pruebas
-#define NUM_REPETICIONES 1000   // Número de repeticiones para cada medición
-#define CALENTAMIENTO 10        // Número de iteraciones de calentamiento (no se miden)
-#define OUTLIER_THRESHOLD 3.0   // Umbral para eliminar valores atípicos (en desviaciones estándar)
+#define NUM_REPETICIONES 1000
+#define CALENTAMIENTO 10
+#define OUTLIER_THRESHOLD 3.0
 
-// Tamaños de mensaje a probar (en bytes)
 const int tamanios[] = {
-    1,          // Para estimar β (latencia)
-    256,        // 2^8 bytes (32 doubles)
-    512,        // 2^9 bytes (64 doubles)
-    1024,       // 2^10 bytes = 1K (128 doubles)
-    2048,       // 2^11 bytes = 2K (256 doubles)
-    4096,       // 2^12 bytes = 4K (512 doubles)
-    8192,       // 2^13 bytes = 8K (1024 doubles)
-    16384,      // 2^14 bytes = 16K
-    32768,      // 2^15 bytes = 32K
-    65536,      // 2^16 bytes = 64K
-    131072,     // 2^17 bytes = 128K
-    262144,     // 2^18 bytes = 256K
-    524288,     // 2^19 bytes = 512K
-    1048576,    // 2^20 bytes = 1M
-    2097152,    // 2^21 bytes = 2M
-    4194304     // 2^22 bytes = 4M
+    1,          // Estimar latencia
+    256,
+    512,
+    1024,
+    2048,
+    4096,
+    8192,
+    16384,
+    32768,
+    65536,
+    131072,
+    262144,
+    524288,
+    1048576,
+    2097152,
+    4194304
 };
 
 #define NUM_TAMANIOS (sizeof(tamanios) / sizeof(tamanios[0]))
 
-// Estructura para almacenar resultados estadísticos
 typedef struct {
     double min;
     double max;
@@ -45,12 +42,11 @@ typedef struct {
     double desviacion;
 } Estadisticas;
 
-// Función para calcular estadísticas eliminando outliers
 Estadisticas calcular_estadisticas(double *tiempos, int n) {
     Estadisticas stats = {0};
     double sum = 0.0, sum_sq = 0.0;
     int i, count = 0;
-    
+
     // Primera pasada para calcular media y desviación
     for (i = 0; i < n; i++) {
         sum += tiempos[i];
@@ -58,13 +54,13 @@ Estadisticas calcular_estadisticas(double *tiempos, int n) {
     }
     stats.media = sum / n;
     stats.desviacion = sqrt((sum_sq / n) - (stats.media * stats.media));
-    
+
     // Segunda pasada para eliminar outliers y calcular min/max
     stats.min = 1e12;
     stats.max = 0.0;
     sum = 0.0;
     count = 0;
-    
+
     for (i = 0; i < n; i++) {
         if (fabs(tiempos[i] - stats.media) <= OUTLIER_THRESHOLD * stats.desviacion) {
             sum += tiempos[i];
@@ -73,12 +69,12 @@ Estadisticas calcular_estadisticas(double *tiempos, int n) {
             count++;
         }
     }
-    
+
     // Recalculamos la media sin outliers
     if (count > 0) {
         stats.media = sum / count;
     }
-    
+
     return stats;
 }
 
@@ -87,7 +83,7 @@ Estadisticas ping_pong(char *buffer, int tamanio, int rank, int repeticiones) {
     int i;
     double *tiempos = (double *)malloc(repeticiones * sizeof(double));
     MPI_Status status;
-    
+
     // Fase de calentamiento (no medimos estos tiempos)
     for (i = 0; i < CALENTAMIENTO; i++) {
         if (rank == 0) {
