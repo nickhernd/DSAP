@@ -5,6 +5,8 @@
  * DNI: 4876654W
  */
 
+// Ejecución : ./mpirunR -np 2 -bind-to core -f host_file.txt tcom
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <mpi.h>
@@ -137,7 +139,8 @@ int main(int argc, char **argv) {
     if (size != 2) {
         if (rank == 0) {
             fprintf(stderr, "Este programa requiere exactamente 2 procesos MPI.\n");
-        }
+            printf("Usando procesos: %d \n", rank);
+	}
         MPI_Finalize();
         return EXIT_FAILURE;
     }
