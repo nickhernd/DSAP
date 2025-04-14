@@ -24,7 +24,7 @@
      int myrank, nprocs;
      double t0, t1, tiempo_paralelo, tiempo_secuencial;
      double *tiempos_parciales;
-     
+
      // Inicialización del entorno MPI
      MPI_Init(&argc, &argv);
      MPI_Comm_rank(MPI_COMM_WORLD, &myrank);  
@@ -110,15 +110,30 @@
  
 
  int numero_primos(int n, int myrank, int nprocs) {
-     int total_primos = 0;
-     
-     for (int i = 2 + myrank; i <= n; i += nprocs) {
-         if (esPrimo(i)) {
-             total_primos++;
-         }
-     }
-     
-     return total_primos;
+    int total_primos = 0;
+   
+    int chunk_size = (n - 1) / nprocs;
+    int start, end;
+   
+    start = 2 + myrank * chunk_size;
+    if (myrank == nprocs - 1) {
+        end = n;
+    } else {
+        end = start + chunk_size - 1;
+    }
+
+    if (start < 2) start = 2;
+   
+    printf("Proceso %d: rango asignado [%d, %d]\n", myrank, start, end);
+   
+
+    for (int i = start; i <= end; i++) {
+        if (esPrimo(i)) {
+            total_primos++;
+        }
+    }
+
+    return total_primos;
  }
  
  int numero_primos_sec(int n) {
