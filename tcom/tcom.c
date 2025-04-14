@@ -86,7 +86,6 @@ Estadisticas ping_pong(char *buffer, int tamanio, int rank, int repeticiones) {
     double *tiempos = (double *)malloc(repeticiones * sizeof(double));
     MPI_Status status;
 
-    // Fase de calentamiento (no medimos estos tiempos)
     for (i = 0; i < CALENTAMIENTO; i++) {
         if (rank == 0) {
             MPI_Send(buffer, tamanio, MPI_BYTE, 1, 0, MPI_COMM_WORLD);
