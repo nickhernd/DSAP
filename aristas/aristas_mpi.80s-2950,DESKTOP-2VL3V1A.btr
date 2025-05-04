@@ -1,0 +1,12 @@
+
+aristas_mpi:2950 terminated with signal 11 at PC=7f35c28cdc53 SP=7fff9a80ac48.  Backtrace:
+/lib/x86_64-linux-gnu/libmpich.so.12(+0x256c53)[0x7f35c28cdc53]
+/lib/x86_64-linux-gnu/libmpich.so.12(+0x21285f3)[0x7f35c479f5f3]
+/lib/x86_64-linux-gnu/libmpich.so.12(+0x23fb85)[0x7f35c28b6b85]
+/lib/x86_64-linux-gnu/libmpich.so.12(+0x23fc7f)[0x7f35c28b6c7f]
+/lib/x86_64-linux-gnu/libmpich.so.12(+0x215a7e6)[0x7f35c47d17e6]
+/lib/x86_64-linux-gnu/libmpich.so.12(MPI_Recv+0x4f8)[0x7f35c27894e8]
+./aristas_mpi(+0x1b81)[0x5598ef4a4b81]
+/lib/x86_64-linux-gnu/libc.so.6(+0x29d90)[0x7f35c2477d90]
+/lib/x86_64-linux-gnu/libc.so.6(__libc_start_main+0x80)[0x7f35c2477e40]
+./aristas_mpi(+0x13e5)[0x5598ef4a43e5]
