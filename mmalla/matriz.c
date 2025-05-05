@@ -6,6 +6,14 @@
 #define MAXBLOQTAM 100
 #define RMAX 4
 
+/**
+ * @brief Función para multiplicar dos matrices almacenadas como vectores.
+ * Realiza la operación c = c + a * b.
+ * @param a Puntero al vector que representa la primera matriz.
+ * @param b Puntero al vector que representa la segunda matriz.
+ * @param c Puntero al vector que representa la matriz resultado (acumulada).
+ * @param m Dimensión de las matrices cuadradas.
+ */
 void mult(double a[], double b[], double *c, int m) {
     int i, j, k;
     for (i = 0; i < m; i++) {
@@ -35,6 +43,15 @@ int main(int argc, char *argv[]) {
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
     MPI_Comm_size(MPI_COMM_WORLD, &nproc);
+
+    // Verificar que haya más de un proceso
+    if (nproc == 1) {
+        if (myrank == 0) {
+            printf("El número de procesos debe ser mayor que 1 para ejecutar el algoritmo de Cannon.\n");
+        }
+        MPI_Finalize();
+        return 0;
+    }
 
     // El proceso 0 obtiene los parámetros de ejecución
     if (myrank == 0) {
@@ -68,12 +85,22 @@ int main(int argc, char *argv[]) {
     // Calcular las coordenadas del proceso en la malla
     fila = myrank / r;
     columna = myrank % r;
+    printf("Proceso %d: fila = %d, columna = %d\n", myrank, fila, columna);
+
+    // Si solo hay un proceso, no hay vecinos y no se realiza la comunicación
+    if (nproc == 1) {
+        printf("Proceso %d: Solo un proceso, no se realiza desplazamiento ni comunicación.\n", myrank);
+        // Saltar las siguientes etapas de desplazamiento y multiplicación
+        MPI_Finalize();
+        return 0;
+    }
 
     // Calcular los rangos de los procesos vecinos
     arriba = ((fila - 1 + r) % r) * r + columna;
     abajo = ((fila + 1) % r) * r + columna;
     izquierda = fila * r + ((columna - 1 + r) % r);
     derecha = fila * r + ((columna + 1) % r);
+    printf("Proceso %d: arriba = %d, abajo = %d, izquierda = %d, derecha = %d\n", myrank, arriba, abajo, izquierda, derecha);
 
     // Reservar memoria para el vector mifila
     mifila = (int *)malloc(r * sizeof(int));
@@ -100,7 +127,7 @@ int main(int argc, char *argv[]) {
 
     // Inicializar el bloque de la matriz a
     for (i = 0; i < bloqtam * bloqtam; i++) {
-        a[i] = (i + 1) * (double)(fila * columna + 1) * (fila * columna + 1) / (bloqtam * bloqtam);
+        a[i] = (i + 1) * (double)(fila * columna + 1) * (fila * columna + 1) / (bloqtam * bloqtam); //correccion de float a double
     }
 
     // Inicializar el bloque de la matriz b (matriz identidad por bloques)
@@ -115,6 +142,7 @@ int main(int argc, char *argv[]) {
     }
 
     // Inicializar el bloque de la matriz c
+        // Inicializar el bloque de la matriz c
     for (i = 0; i < bloqtam * bloqtam; i++) {
         c[i] = 0.0;
     }
@@ -128,21 +156,35 @@ int main(int argc, char *argv[]) {
     int despl_fila = fila % r;
     int origen_a = mifila[(columna + despl_fila) % r];
     int destino_a = mifila[(columna - despl_fila + r) % r];
+    printf("Proceso %d: Desplazamiento inicial a: origen_a = %d, destino_a = %d\n", myrank, origen_a, destino_a);
 
-    MPI_Send(a, bloqtam * bloqtam, MPI_DOUBLE, destino_a, 100, MPI_COMM_WORLD);
-    MPI_Recv(a, bloqtam * bloqtam, MPI_DOUBLE, origen_a, 100, MPI_COMM_WORLD, &status);
-
+    if (origen_a != myrank) { // Corregido
+        MPI_Send(a, bloqtam * bloqtam, MPI_DOUBLE, destino_a, 100, MPI_COMM_WORLD);
+        printf("Proceso %d: Enviando a a %d, tag 100\n", myrank, destino_a);
+        MPI_Recv(a, bloqtam * bloqtam, MPI_DOUBLE, origen_a, 100, MPI_COMM_WORLD, &status);
+        printf("Proceso %d: Recibido a de %d, tag 100\n", myrank, origen_a);
+    } else {
+        printf("Proceso %d: No se realiza el desplazamiento inicial de a\n", myrank);
+    }
 
     int despl_col = columna % r;
     int origen_b = ((fila + despl_col) % r) * r + columna;
     int destino_b = ((fila - despl_col + r) % r) * r + columna;
+    printf("Proceso %d: Desplazamiento inicial b: origen_b = %d, destino_b = %d\n", myrank, origen_b, destino_b);
 
-    MPI_Send(b, bloqtam * bloqtam, MPI_DOUBLE, destino_b, 200, MPI_COMM_WORLD);
-    MPI_Recv(b, bloqtam * bloqtam, MPI_DOUBLE, origen_b, 200, MPI_COMM_WORLD, &status);
+    if (origen_b != myrank) { // Corregido
+        MPI_Send(b, bloqtam * bloqtam, MPI_DOUBLE, destino_b, 200, MPI_COMM_WORLD);
+        printf("Proceso %d: Enviando b a %d, tag 200\n", myrank, destino_b);
+        MPI_Recv(b, bloqtam * bloqtam, MPI_DOUBLE, origen_b, 200, MPI_COMM_WORLD, &status);
+        printf("Proceso %d: Recibido b de %d, tag 200\n", myrank, origen_b);
+    } else {
+        printf("Proceso %d: No se realiza el desplazamiento inicial de b\n", myrank);
+    }
 
     // Algoritmo de Cannon
     for (etapa = 0; etapa < r; etapa++) {
         mult(a, b, c, bloqtam);
+        printf("Proceso %d: Multiplicación en etapa %d\n", myrank, etapa);
 
         // Etiquetas de mensaje diferentes en cada iteración
         int tag_a_send = 300 + etapa;
@@ -150,11 +192,17 @@ int main(int argc, char *argv[]) {
         int tag_b_send = 500 + etapa;
         int tag_b_recv = 600 + etapa;
 
+        printf("Proceso %d: Antes de enviar a, etapa %d, izquierda = %d, tag_a_send = %d\n", myrank, etapa, izquierda, tag_a_send);
         MPI_Send(a, bloqtam * bloqtam, MPI_DOUBLE, izquierda, tag_a_send, MPI_COMM_WORLD);
+        printf("Proceso %d: Enviando a a %d, tag %d\n", myrank, izquierda, tag_a_send);
         MPI_Recv(a, bloqtam * bloqtam, MPI_DOUBLE, derecha, tag_a_recv, MPI_COMM_WORLD, &status);
+        printf("Proceso %d: Recibido a de %d, tag %d\n", myrank, derecha, tag_a_recv);
 
+        printf("Proceso %d: Antes de enviar b, etapa %d, arriba = %d, tag_b_send = %d\n", myrank, etapa, arriba, tag_b_send);
         MPI_Send(b, bloqtam * bloqtam, MPI_DOUBLE, arriba, tag_b_send, MPI_COMM_WORLD);
+        printf("Proceso %d: Enviando b a %d, tag %d\n", myrank, arriba, tag_b_send);
         MPI_Recv(b, bloqtam * bloqtam, MPI_DOUBLE, abajo, tag_b_recv, MPI_COMM_WORLD, &status);
+        printf("Proceso %d: Recibido b de %d, tag %d\n", myrank, abajo, tag_b_recv);
     }
 
     // Comprobar los resultados
@@ -167,10 +215,11 @@ int main(int argc, char *argv[]) {
 
     // Recolectar el número de errores de todos los procesos en el proceso 0
     if (myrank == 0) {
+        printf("nproc = %d\n", nproc); //agregado
         errores = (int *)malloc(nproc * sizeof(int));
         if (errores == NULL) {
-             printf("Error: No se pudo reservar memoria para errores en el proceso 0\n");
-             MPI_Abort(MPI_COMM_WORLD, 1);
+            printf("Error: No se pudo reservar memoria para errores en el proceso 0\n");
+            MPI_Abort(MPI_COMM_WORLD, 1);
         }
     }
     MPI_Gather(&numerror, 1, MPI_INT, errores, 1, MPI_INT, 0, MPI_COMM_WORLD);
