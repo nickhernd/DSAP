@@ -6,14 +6,6 @@
 #define MAXBLOQTAM 100
 #define RMAX 4
 
-/**
- * @brief Función para multiplicar dos matrices almacenadas como vectores.
- * Realiza la operación c = c + a * b.
- * @param a Puntero al vector que representa la primera matriz.
- * @param b Puntero al vector que representa la segunda matriz.
- * @param c Puntero al vector que representa la matriz resultado (acumulada).
- * @param m Dimensión de las matrices cuadradas.
- */
 void mult(double a[], double b[], double *c, int m) {
     int i, j, k;
     for (i = 0; i < m; i++) {
