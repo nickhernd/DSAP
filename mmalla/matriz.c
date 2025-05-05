@@ -44,15 +44,6 @@ int main(int argc, char *argv[]) {
     MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
     MPI_Comm_size(MPI_COMM_WORLD, &nproc);
 
-    // Verificar que haya más de un proceso
-    if (nproc == 1) {
-        if (myrank == 0) {
-            printf("El número de procesos debe ser mayor que 1 para ejecutar el algoritmo de Cannon.\n");
-        }
-        MPI_Finalize();
-        return 0;
-    }
-
     // El proceso 0 obtiene los parámetros de ejecución
     if (myrank == 0) {
         printf("Introducir el tamaño de bloque (max %d): ", MAXBLOQTAM);
@@ -87,20 +78,13 @@ int main(int argc, char *argv[]) {
     columna = myrank % r;
     printf("Proceso %d: fila = %d, columna = %d\n", myrank, fila, columna);
 
-    // Si solo hay un proceso, no hay vecinos y no se realiza la comunicación
-    if (nproc == 1) {
-        printf("Proceso %d: Solo un proceso, no se realiza desplazamiento ni comunicación.\n", myrank);
-        // Saltar las siguientes etapas de desplazamiento y multiplicación
-        MPI_Finalize();
-        return 0;
-    }
-
     // Calcular los rangos de los procesos vecinos
     arriba = ((fila - 1 + r) % r) * r + columna;
     abajo = ((fila + 1) % r) * r + columna;
     izquierda = fila * r + ((columna - 1 + r) % r);
     derecha = fila * r + ((columna + 1) % r);
     printf("Proceso %d: arriba = %d, abajo = %d, izquierda = %d, derecha = %d\n", myrank, arriba, abajo, izquierda, derecha);
+
 
     // Reservar memoria para el vector mifila
     mifila = (int *)malloc(r * sizeof(int));
@@ -113,6 +97,11 @@ int main(int argc, char *argv[]) {
     for (i = 0; i < r; i++) {
         mifila[i] = fila * r + i;
     }
+    printf("Proceso %d: mifila = ", myrank);
+    for (i = 0; i < r; i++) {
+        printf("%d ", mifila[i]);
+    }
+    printf("\n");
 
     // Reservar memoria para los bloques de las matrices
     a = (double *)malloc(bloqtam * bloqtam * sizeof(double));
@@ -142,7 +131,6 @@ int main(int argc, char *argv[]) {
     }
 
     // Inicializar el bloque de la matriz c
-        // Inicializar el bloque de la matriz c
     for (i = 0; i < bloqtam * bloqtam; i++) {
         c[i] = 0.0;
     }
@@ -166,6 +154,7 @@ int main(int argc, char *argv[]) {
     } else {
         printf("Proceso %d: No se realiza el desplazamiento inicial de a\n", myrank);
     }
+
 
     int despl_col = columna % r;
     int origen_b = ((fila + despl_col) % r) * r + columna;
