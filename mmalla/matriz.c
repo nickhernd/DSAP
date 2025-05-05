@@ -84,7 +84,7 @@ int main(int argc, char *argv[]) {
     }
 
     for (i = 0; i < bloqtam * bloqtam; i++) {
-        a[i] = (i + 1.0) * (double)(fila * columna + 1) * (fila * columna + 1) / (bloqtam * bloqtam);
+        a[i] = (i + 1) * (float)(fila * columna + 1) * (fila * columna + 1) / (bloqtam * bloqtam);
     }
 
     for (i = 0; i < bloqtam * bloqtam; i++) {
