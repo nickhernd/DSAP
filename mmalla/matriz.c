@@ -166,7 +166,7 @@ int main(int argc, char *argv[]) {
     }
 
     // Recolectar el número de errores de todos los procesos en el proceso 0
-     if (myrank == 0) {
+    if (myrank == 0) {
         errores = (int *)malloc(nproc * sizeof(int));
         if (errores == NULL) {
              printf("Error: No se pudo reservar memoria para errores en el proceso 0\n");
