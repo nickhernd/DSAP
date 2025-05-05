@@ -81,6 +81,7 @@ int main(int argc, char *argv[]) {
         printf("Error: No se pudo reservar memoria para mifila en el proceso %d\n", myrank);
         MPI_Abort(MPI_COMM_WORLD, 1);
     }
+
     // Llenar el vector mifila con los rangos de los procesos en la misma fila
     for (i = 0; i < r; i++) {
         mifila[i] = fila * r + i;
@@ -99,7 +100,7 @@ int main(int argc, char *argv[]) {
 
     // Inicializar el bloque de la matriz a
     for (i = 0; i < bloqtam * bloqtam; i++) {
-        a[i] = (i + 1) * (double)(fila * columna + 1) * (fila * columna + 1) / (bloqtam * bloqtam); //correccion de float a double
+        a[i] = (i + 1) * (double)(fila * columna + 1) * (fila * columna + 1) / (bloqtam * bloqtam);
     }
 
     // Inicializar el bloque de la matriz b (matriz identidad por bloques)
@@ -128,29 +129,32 @@ int main(int argc, char *argv[]) {
     int origen_a = mifila[(columna + despl_fila) % r];
     int destino_a = mifila[(columna - despl_fila + r) % r];
 
-    MPI_Sendrecv_replace(a, bloqtam * bloqtam, MPI_DOUBLE,
-                         destino_a, 0, origen_a, 0,
-                         MPI_COMM_WORLD, &status);
+    MPI_Send(a, bloqtam * bloqtam, MPI_DOUBLE, destino_a, 100, MPI_COMM_WORLD);
+    MPI_Recv(a, bloqtam * bloqtam, MPI_DOUBLE, origen_a, 100, MPI_COMM_WORLD, &status);
+
 
     int despl_col = columna % r;
     int origen_b = ((fila + despl_col) % r) * r + columna;
     int destino_b = ((fila - despl_col + r) % r) * r + columna;
 
-    MPI_Sendrecv_replace(b, bloqtam * bloqtam, MPI_DOUBLE,
-                         destino_b, 1, origen_b, 1,
-                         MPI_COMM_WORLD, &status);
+    MPI_Send(b, bloqtam * bloqtam, MPI_DOUBLE, destino_b, 200, MPI_COMM_WORLD);
+    MPI_Recv(b, bloqtam * bloqtam, MPI_DOUBLE, origen_b, 200, MPI_COMM_WORLD, &status);
 
     // Algoritmo de Cannon
     for (etapa = 0; etapa < r; etapa++) {
         mult(a, b, c, bloqtam);
 
-        MPI_Sendrecv_replace(a, bloqtam * bloqtam, MPI_DOUBLE,
-                             izquierda, 2 + etapa, derecha, 2 + etapa,
-                             MPI_COMM_WORLD, &status);
+        // Etiquetas de mensaje diferentes en cada iteración
+        int tag_a_send = 300 + etapa;
+        int tag_a_recv = 400 + etapa;
+        int tag_b_send = 500 + etapa;
+        int tag_b_recv = 600 + etapa;
 
-        MPI_Sendrecv_replace(b, bloqtam * bloqtam, MPI_DOUBLE,
-                             arriba, 2 + r + etapa, abajo, 2 + r + etapa,
-                             MPI_COMM_WORLD, &status);
+        MPI_Send(a, bloqtam * bloqtam, MPI_DOUBLE, izquierda, tag_a_send, MPI_COMM_WORLD);
+        MPI_Recv(a, bloqtam * bloqtam, MPI_DOUBLE, derecha, tag_a_recv, MPI_COMM_WORLD, &status);
+
+        MPI_Send(b, bloqtam * bloqtam, MPI_DOUBLE, arriba, tag_b_send, MPI_COMM_WORLD);
+        MPI_Recv(b, bloqtam * bloqtam, MPI_DOUBLE, abajo, tag_b_recv, MPI_COMM_WORLD, &status);
     }
 
     // Comprobar los resultados
@@ -162,7 +166,7 @@ int main(int argc, char *argv[]) {
     }
 
     // Recolectar el número de errores de todos los procesos en el proceso 0
-    if (myrank == 0) {
+     if (myrank == 0) {
         errores = (int *)malloc(nproc * sizeof(int));
         if (errores == NULL) {
              printf("Error: No se pudo reservar memoria para errores en el proceso 0\n");
