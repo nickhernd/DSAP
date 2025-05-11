@@ -1,4 +1,7 @@
-// Autor : Jaime Hernández Delgado
+// Autor: Jaime Hernández Delgado
+// DNI : 48776654W
+// mpirun -np 4 ./aristas_mpi pont
+// display pont_edge_paralelo.pgm
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -6,219 +9,225 @@
 #include <mpi.h>
 #include <math.h>
 
-// Estructura para almacenar una imagen en formato PGM
-typedef struct
-{
-    int row;      // número de filas en la imagen
-    int col;      // número de columnas en la imagen
-    int max_gray; // máximo valor de gris
-    int **matrix; // matriz de píxeles entre 0 y 255
+// Estructura que contiene lo necesario para almacenar una imagen en formato PGM
+typedef struct {
+    int row;  // número de filas en la imagen
+    int col;  // número de columnas en la imagen
+    int max_gray; // maximo valor gray
+    int **matrix; // matriz de pixeles entre 0 y 255
 } PGMData;
 
-// Declaraciones de funciones (asumidas en aux.c)
 int **CrearArray2D_int(int, int);
 void LiberarArray2D_int(int, double **);
 void readPGM(char *, PGMData *);
 void writePGM(char *, PGMData *);
 void Filtro_Laplace(int **, int **, int, int);
-void crea_pgm(int, int, int, int **, PGMData *);
 
-int main(int argc, char **argv)
-{
-    int rank, size;
-    double start_time, end_time;
+int main(int argc, char **argv) {
+    int rank, size, row, col, max_gray, rowlocal, i, j;
+    PGMData img_data, img_edge;
+    char archivo_imagen_ori[100] = "logo.pgm";
+    char archivo_imagen_aristas[100] = "logo_edge_paralelo.pgm";
 
-    // Inicializar MPI
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-    // Declaración de variables
-    char archivo_imagen_ori[100] = "logo.pgm";
-    char archivo_imagen_aristas[100] = "logo_edge_paralelo.pgm"; // Cambiado el nombre del archivo de salida para la versión paralela
-    PGMData img_data, img_edge;
-    int row, col, max_gray;
-    int row_local, row_start;
-    int **local_matrix, **local_matrix_edge;
-    MPI_Status status;
-
-    // Manejo de argumentos de línea de comandos
-    if (argc > 1)
-    {
-        strcpy(archivo_imagen_ori, argv[1]);
-        strcat(archivo_imagen_ori, ".pgm");
-        strcpy(archivo_imagen_aristas, argv[1]);
-        strcat(archivo_imagen_aristas, "_edge_paralelo.pgm"); // Añadido sufijo "_paralelo"
+    switch (argc) {
+        case 2:
+            strcpy(archivo_imagen_ori, argv[1]);
+            strcat(archivo_imagen_ori, ".pgm");
+            strcpy(archivo_imagen_aristas, argv[1]);
+            strcat(archivo_imagen_aristas, "_edge_paralelo.pgm");
+            break;
+        case 1:
+            break;
+        default:
+            if (rank == 0) {
+                printf("Demasiados parametros\n");
+            }
+            MPI_Finalize();
+            return 1; // Use a non-zero exit code for errors
     }
 
-    // Proceso 0: Leer la imagen original
-    if (rank == 0)
-    {
-        printf("\n *************** DATOS DE LA EJECUCION ***************************\n");
-        printf(" * Archivo imagen original       : %25s           *\n", archivo_imagen_ori);
-        printf(" * Archivo imagen con aristas (paralelo): %25s           *\n", archivo_imagen_aristas); // Indicando que es la versión paralela
-        printf(" *****************************************************************\n\n");
-        printf(" Leyendo imagen \"%s\" ... \n", archivo_imagen_ori);
+    // ---  Process 0: Read and Broadcast Image Data ---
+    if (rank == 0) {
+        printf("\n  *************** DATOS DE LA EJECUCION ***************************\n");
+        printf("  * Archivo imagen original   : %25s         *\n", archivo_imagen_ori);
+        printf("  * Archivo imagen con aristas: %25s         *\n", archivo_imagen_aristas);
+        printf("  *****************************************************************\n\n");
+        printf("  Leyendo imagen \"%s\" ... \n", archivo_imagen_ori);
 
         readPGM(archivo_imagen_ori, &img_data);
-        printf(" Dimension de la imagen: %d x %d\n", img_data.row, img_data.col);
-
-        // Guardar dimensiones y max_gray para enviar a otros procesos
         row = img_data.row;
         col = img_data.col;
         max_gray = img_data.max_gray;
+
+        printf("  Dimension de la imagen: %d x %d\n", row, col);
+
+        img_edge.matrix = CrearArray2D_int(row, col); // Allocate for the final result
+        img_edge.row = row;
+        img_edge.col = col;
+        img_edge.max_gray = max_gray;
     }
 
-    // Broadcast de las dimensiones de la imagen y el valor máximo de gris
     MPI_Bcast(&row, 1, MPI_INT, 0, MPI_COMM_WORLD);
     MPI_Bcast(&col, 1, MPI_INT, 0, MPI_COMM_WORLD);
     MPI_Bcast(&max_gray, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
-    // Calcular el número de filas para cada proceso
-    row_local = row / size;
-    if (rank == 0)
-    {
-        row_local += row % size; // El proceso 0 toma el resto de las filas
-    }
+    // --- Calculate Local Rows and Offsets ---
+    int *sendcounts = NULL;
+    int *displs = NULL;
 
-    // Calcular la fila de inicio para cada proceso
-    row_start = 0;
-    for (int i = 0; i < rank; i++)
-    {
-        row_start += row / size;
-        if (i == 0)
-            row_start += row % size; // Sumar el resto solo una vez al calcular los desplazamientos
-    }
-
-    // Alocar memoria para las matrices locales
-    // Cada proceso almacena sus filas locales + 2 filas extra (superior e inferior) para el cálculo de Laplace
-    // El primer y último proceso solo necesitan una fila extra.
     if (rank == 0) {
-        local_matrix = CrearArray2D_int(row_local + 1, col); // +1 para la fila inferior
-        local_matrix_edge = CrearArray2D_int(row_local, col);
-    }
-    else if (rank == size - 1){
-        local_matrix = CrearArray2D_int(row_local + 1, col); // +1 para la fila superior
-        local_matrix_edge = CrearArray2D_int(row_local, col);
-    }
-    else {
-        local_matrix = CrearArray2D_int(row_local + 2, col);
-        local_matrix_edge = CrearArray2D_int(row_local, col);
-    }
+        sendcounts = (int *)malloc(size * sizeof(int));
+        displs = (int *)malloc(size * sizeof(int));
 
-    // Distribuir los datos de la imagen original
-    if (rank == 0)
-    {
-        // El proceso 0 envía porciones de la matriz original a cada proceso
-        for (int i = 1; i < size; i++)
-        {
-            int dest_row_local = row / size;
-            if (i == 0)
-                dest_row_local += row % size;
-            int dest_row_start = 0;
-             for (int j = 0; j < i; j++)
-            {
-                dest_row_start += row / size;
-                 if (j == 0)
-                    dest_row_start += row % size;
+        int base_rows = row / size;
+        int extra = row % size;
+        int offset = 0;
+
+        for (i = 0; i < size; i++) {
+            sendcounts[i] = base_rows;
+            if (i < extra) {
+                sendcounts[i]++;
             }
-            MPI_Send(&img_data.matrix[dest_row_start][0], dest_row_local * col, MPI_INT, i, 0, MPI_COMM_WORLD);
-        }
-
-        // El proceso 0 copia su porción de la matriz original a local_matrix
-        for (int i = 0; i < row_local; i++)
-        {
-            for (int j = 0; j < col; j++)
-            {
-                local_matrix[i][j] = img_data.matrix[i][j];
+            sendcounts[i] *= col; // Number of elements to send (rows * cols)
+            displs[i] = offset * col;
+            offset += base_rows;
+            if (i < extra) {
+                offset++;
             }
         }
     }
-    else
-    {
-        // Los procesos no-cero reciben su porción de la matriz original
-        MPI_Recv(&local_matrix[1][0], row_local * col, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
+
+    MPI_Bcast(sendcounts, size, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Bcast(displs, size, MPI_INT, 0, MPI_COMM_WORLD);
+
+    rowlocal = sendcounts[rank] / col;
+    int **local_matrix = CrearArray2D_int(rowlocal + 2, col); // +2 for ghost rows
+    int **local_edge_matrix = CrearArray2D_int(rowlocal, col);
+
+    // --- Scatter the Image Data ---
+    if (rank == 0) {
+        for (i = 0; i < row; i++) {
+          for (j = 0; j < col; j++){
+            img_edge.matrix[i][j] = img_data.matrix[i][j];
+          }
+        }
+        
+        for (i = 0; i < size; i++) {
+          int rows_to_send = sendcounts[i] / col;
+          if (i != 0) {
+            int offset = displs[i] / col;
+            for (int k = 0; k < rows_to_send + 2; k++){
+              for (int l = 0; l < col; l++){
+                if (k == 0) {
+                  local_matrix[k][l] = img_data.matrix[offset - 1][l];
+                } else if (k == rows_to_send + 1) {
+                  local_matrix[k][l] = img_data.matrix[offset + k - 1][l];
+                } else {
+                  local_matrix[k][l] = img_data.matrix[offset + k - 1][l];
+                }
+              }
+            }
+            for (int k = 0; k < rows_to_send + 2; k++) {
+              MPI_Send(local_matrix[k], col, MPI_INT, i, 0, MPI_COMM_WORLD);
+            }
+          } else {
+            for (int k = 0; k < rowlocal + 2; k++){
+              for (int l = 0; l < col; l++){
+                if (k == 0) {
+                  local_matrix[k][l] = img_data.matrix[k][l];
+                } else if (k == rowlocal + 1) {
+                  local_matrix[k][l] = img_data.matrix[k][l];
+                } else {
+                  local_matrix[k][l] = img_data.matrix[k][l];
+                }
+              }
+            }
+          }
+        }
+    } else {
+      for (int k = 0; k < rowlocal + 2; k++){
+        MPI_Recv(local_matrix[k], col, MPI_INT, 0, 0, MPI_COMM_WORLD);
+      }
     }
 
-     // Enviar la última fila de cada proceso a su vecino inferior, y la primera fila a su vecino superior
-    if (size > 1) { // Para evitar problemas si solo hay un proceso
-        if (rank != size - 1)
-            MPI_Send(&local_matrix[row_local - 1][0], col, MPI_INT, rank + 1, 1, MPI_COMM_WORLD); // Enviar la última fila
-        if (rank != 0)
-            MPI_Recv(&local_matrix[0][0], col, MPI_INT, rank - 1, 1, MPI_COMM_WORLD, &status);     // Recibir la fila superior
-        if (rank != 0)
-            MPI_Send(&local_matrix[1][0], col, MPI_INT, rank - 1, 2, MPI_COMM_WORLD);         // Enviar la primera fila
-        if (rank != size - 1)
-           MPI_Recv(&local_matrix[row_local + (rank != size -1)][0], col, MPI_INT, rank + 1, 2, MPI_COMM_WORLD, &status); // Recibir la fila inferior
-    }
-
-    // Aplicar el filtro de Laplace en paralelo
-    printf(" Proceso %d aplicando el filtro de Laplace...\n", rank);
+    // --- Apply Laplace Filter ---
+    double start_time, end_time;
     start_time = MPI_Wtime();
-    if (rank == 0)
-    {
-        Filtro_Laplace(local_matrix, local_matrix_edge, row_local, col); // Procesa su porción
-    }
-    else
-    {
-       Filtro_Laplace(local_matrix, local_matrix_edge, row_local, col);
-    }
-     end_time = MPI_Wtime();
-     printf(" Proceso %d: Tiempo de cálculo del filtro = %f segundos\n", rank, end_time - start_time);
 
-    // Recoger los resultados en el proceso 0
-    if (rank == 0)
-    {
-        img_edge.row = row;
-        img_edge.col = col;
-        img_edge.max_gray = max_gray;
-        img_edge.matrix = CrearArray2D_int(row, col);
+    Filtro_Laplace(local_matrix, local_edge_matrix, rowlocal + 2, col); // Apply on local data
 
-        // Copiar la porción del proceso 0
-        for (int i = 0; i < row_local; i++)
-        {
-            for (int j = 0; j < col; j++)
-            {
-                img_edge.matrix[i][j] = local_matrix_edge[i][j];
-            }
-        }
+    end_time = MPI_Wtime();
+    printf("Proceso %d: Tiempo de cálculo del filtro = %lf segundos\n", rank, end_time - start_time);
 
-        // Recibir los resultados de los otros procesos
-        for (int i = 1; i < size; i++)
-        {
-            int src_row_local = row / size;
-            if (i == 0)
-                src_row_local += row % size;
-            int src_row_start = 0;
-            for (int j = 0; j < i; j++)
-            {
-                 src_row_start += row / size;
-                 if (j == 0)
-                    src_row_start += row % size;
-            }
-            MPI_Recv(&img_edge.matrix[src_row_start][0], src_row_local * col, MPI_INT, i, 3, MPI_COMM_WORLD, &status);
-        }
+    // --- Gather the Results ---
+    int *recvcounts = NULL;
+    int *recvdispls = NULL;
 
-        // Guardar la imagen resultante
-        printf(" Proceso 0 guardando la imagen con la detección de aristas en \"%s\"\n\n", archivo_imagen_aristas);
-        writePGM(archivo_imagen_aristas, &img_edge);
-    }
-    else
-    {
-        // Los procesos no-cero envían sus resultados al proceso 0
-        MPI_Send(&local_matrix_edge[0][0], row_local * col, MPI_INT, 0, 3, MPI_COMM_WORLD);
-    }
-
-    // Liberar la memoria asignada
     if (rank == 0) {
+        recvcounts = (int *)malloc(size * sizeof(int));
+        recvdispls = (int *)malloc(size * sizeof(int));
+
+        int base_rows = row / size;
+        int extra = row % size;
+        int offset = 0;
+
+        for (i = 0; i < size; i++) {
+            recvcounts[i] = base_rows;
+            if (i < extra) {
+                recvcounts[i]++;
+            }
+            recvcounts[i] *= col;
+            recvdispls[i] = offset * col;
+            offset += base_rows;
+            if (i < extra) {
+                offset++;
+            }
+        }
+    }
+
+    if (rank != 0) {
+      for (int k = 0; k < rowlocal; k++){
+        MPI_Send(local_edge_matrix[k], col, MPI_INT, 0, 0, MPI_COMM_WORLD);
+      }
+    } else {
+      for (int i = 1; i < size; i++) {
+        int rows_to_recv = recvcounts[i] / col;
+        int offset = recvdispls[i] / col;
+        int **temp_matrix = CrearArray2D_int(rows_to_recv, col);
+
+        for (int k = 0; k < rows_to_recv; k++){
+          MPI_Recv(temp_matrix[k], col, MPI_INT, i, 0, MPI_COMM_WORLD);
+        }
+
+        for (int k = 0; k < rows_to_recv; k++){
+          for (int l = 0; l < col; l++){
+            img_edge.matrix[offset + k][l] = temp_matrix[k][l];
+          }
+        }
+        LiberarArray2D_int(rows_to_recv, temp_matrix);
+      }
+    }
+
+    // --- Process 0: Write the Result ---
+    if (rank == 0) {
+        printf("  Guardando la imagen con la detección de aristas en \"%s\"\n\n", archivo_imagen_aristas);
+        writePGM(archivo_imagen_aristas, &img_edge);
+
         LiberarArray2D_int(img_data.row, img_data.matrix);
         LiberarArray2D_int(img_edge.row, img_edge.matrix);
+        free(sendcounts);
+        free(displs);
+        free(recvcounts);
+        free(recvdispls);
     }
-    LiberarArray2D_int(row_local + (rank == 0 ? 1 : (rank == size -1 ? 1: 2)), local_matrix);
-    LiberarArray2D_int(row_local, local_matrix_edge);
 
-    // Finalizar MPI
+    LiberarArray2D_int(rowlocal + 2, local_matrix);
+    LiberarArray2D_int(rowlocal, local_edge_matrix);
+
     MPI_Finalize();
     return 0;
 }
-

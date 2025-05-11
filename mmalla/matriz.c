@@ -1,21 +1,21 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <math.h>
 #include <mpi.h>
+#include <math.h>
 
-#define MAXBLOQTAM 100
-#define RMAX 4
+// Valores máximos para las dimensiones de los bloques y la cantidad de bloques
+#define rmax 4
+#define maxbloqtam 100
 
-/**
- * @brief Función para multiplicar dos matrices almacenadas como vectores.
- * Realiza la operación c = c + a * b.
- * @param a Puntero al vector que representa la primera matriz.
- * @param b Puntero al vector que representa la segunda matriz.
- * @param c Puntero al vector que representa la matriz resultado (acumulada).
- * @param m Dimensión de las matrices cuadradas.
- */
+// Función para multiplicar dos matrices almacenadas como vectores y acumular el resultado en la matriz c
 void mult(double a[], double b[], double *c, int m) {
     int i, j, k;
+    
+    // CORRECIÓN: Inicializar c a cero ANTES de la multiplicación
+    for (i = 0; i < m * m; i++) {
+        c[i] = 0.0;
+    }
+    
     for (i = 0; i < m; i++) {
         for (j = 0; j < m; j++) {
             for (k = 0; k < m; k++) {
@@ -25,211 +25,218 @@ void mult(double a[], double b[], double *c, int m) {
     }
 }
 
-int main(int argc, char *argv[]) {
-    int myrank, nproc;
-    int r;          // Dimensión de la malla de procesos
-    int bloqtam;    // Tamaño del bloque de la matriz
-    int fila, columna; // Coordenadas del proceso en la malla
-    int arriba, abajo;   // Rangos de los procesos vecinos arriba y abajo
-    int izquierda, derecha; // Rangos de los procesos vecinos izquierda y derecha
-    int *mifila;     // Vector con los rangos de los procesos en la misma fila
-    int numerror = 0; // Contador de errores en la comparación de resultados
-    int i, etapa;     // Variables de bucle
-    double *a, *b, *c, *atmp; // Punteros a los bloques de las matrices
-    MPI_Status status;    // Estructura para información de estado de las comunicaciones
-    int *errores = NULL;  // Puntero al vector de errores de todos los procesos (en el proceso 0)
-
-    // Inicializar el entorno MPI
-    MPI_Init(&argc, &argv);
-    MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
-    MPI_Comm_size(MPI_COMM_WORLD, &nproc);
-
-    // El proceso 0 obtiene los parámetros de ejecución
-    if (myrank == 0) {
-        printf("Introducir el tamaño de bloque (max %d): ", MAXBLOQTAM);
-        scanf("%d", &bloqtam);
-
-        if (bloqtam > MAXBLOQTAM) {
-            printf("Error: El tamaño de bloque debe ser <= %d\n", MAXBLOQTAM);
-            MPI_Abort(MPI_COMM_WORLD, 1);
-        }
-
-        r = (int)sqrt(nproc);
-        if (r * r != nproc) {
-            printf("Error: El número de procesos debe ser un cuadrado perfecto\n");
-            MPI_Abort(MPI_COMM_WORLD, 1);
-        }
-
-        if (r > RMAX) {
-            printf("Error: La dimensión de la malla debe ser <= %d\n", RMAX);
-            MPI_Abort(MPI_COMM_WORLD, 1);
-        }
-
-        printf("Ejecutando con %d procesos en una malla %dx%d\n", nproc, r, r);
-        printf("Tamaño de bloque: %d\n", bloqtam);
+// Función para generar la matriz original A según la función de inicialización
+void generar_matriz_original(double *original, int bloqtam, int fila, int columna) {
+    int i;
+    for (i = 0; i < bloqtam * bloqtam; i++) {
+        original[i] = (i + 1) * (float)(fila * columna + 1) * (float)(fila * columna + 1) / (bloqtam * bloqtam);
     }
+}
 
-    // Distribuir los parámetros a todos los procesos
+int main(int argc, char *argv[]) {
+    int numprocs, myrank, r, bloqtam, i, j, k;
+    double *a, *b, *c, *ATMP, *a_original;
+    int fila, columna;
+    int arriba, abajo, izquierda, derecha;
+    MPI_Status status[2];
+    MPI_Request request[2];
+    
+    // Inicializar MPI
+    MPI_Init(&argc, &argv);
+    MPI_Comm_size(MPI_COMM_WORLD, &numprocs);
+    MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+
+    // El proceso 0 obtiene el tamaño de los bloques desde la entrada estándar
+    if (myrank == 0) {
+        printf("Ingrese el tamaño de los bloques (bloqtam): ");
+        fflush(stdout);
+        scanf("%d", &bloqtam);
+        
+        // Verificar que el número de procesos sea un cuadrado perfecto
+        r = (int)sqrt(numprocs);
+        if (r * r != numprocs) {
+            fprintf(stderr, "Error: El número de procesos debe ser un cuadrado perfecto.\n");
+            MPI_Abort(MPI_COMM_WORLD, 1);
+            return 1;
+        }
+        
+        // Verificar restricciones
+        if (r > rmax) {
+            fprintf(stderr, "Error: r (%d) excede rmax (%d)\n", r, rmax);
+            MPI_Abort(MPI_COMM_WORLD, 1);
+            return 1;
+        }
+        if (bloqtam > maxbloqtam) {
+            fprintf(stderr, "Error: bloqtam (%d) excede maxbloqtam (%d)\n", bloqtam, maxbloqtam);
+            MPI_Abort(MPI_COMM_WORLD, 1);
+            return 1;
+        }
+    }
+    
+    // Distribución de los parámetros a todos los procesos
     MPI_Bcast(&bloqtam, 1, MPI_INT, 0, MPI_COMM_WORLD);
-    MPI_Bcast(&r, 1, MPI_INT, 0, MPI_COMM_WORLD);
-
-    // Calcular las coordenadas del proceso en la malla
+    r = (int)sqrt(numprocs);
+    
+    // Calcular la posición en la malla (fila, columna)
     fila = myrank / r;
     columna = myrank % r;
-    printf("Proceso %d: fila = %d, columna = %d\n", myrank, fila, columna);
-
-    // Calcular los rangos de los procesos vecinos
+    
+    // Calcular los vecinos para la rotación de bloques
     arriba = ((fila - 1 + r) % r) * r + columna;
     abajo = ((fila + 1) % r) * r + columna;
     izquierda = fila * r + ((columna - 1 + r) % r);
     derecha = fila * r + ((columna + 1) % r);
-    printf("Proceso %d: arriba = %d, abajo = %d, izquierda = %d, derecha = %d\n", myrank, arriba, abajo, izquierda, derecha);
-
-
-    // Reservar memoria para el vector mifila
-    mifila = (int *)malloc(r * sizeof(int));
-    if (mifila == NULL) {
-        printf("Error: No se pudo reservar memoria para mifila en el proceso %d\n", myrank);
-        MPI_Abort(MPI_COMM_WORLD, 1);
-    }
-
-    // Llenar el vector mifila con los rangos de los procesos en la misma fila
-    for (i = 0; i < r; i++) {
-        mifila[i] = fila * r + i;
-    }
-    printf("Proceso %d: mifila = ", myrank);
-    for (i = 0; i < r; i++) {
-        printf("%d ", mifila[i]);
-    }
-    printf("\n");
-
-    // Reservar memoria para los bloques de las matrices
+    
+    // Asignar memoria para los bloques
     a = (double *)malloc(bloqtam * bloqtam * sizeof(double));
     b = (double *)malloc(bloqtam * bloqtam * sizeof(double));
     c = (double *)malloc(bloqtam * bloqtam * sizeof(double));
-    atmp = (double *)malloc(bloqtam * bloqtam * sizeof(double));
-
-    if (a == NULL || b == NULL || c == NULL || atmp == NULL) {
-        printf("Error: No se pudo reservar memoria en el proceso %d\n", myrank);
+    ATMP = (double *)malloc(bloqtam * bloqtam * sizeof(double));
+    a_original = (double *)malloc(bloqtam * bloqtam * sizeof(double));
+    
+    if (a == NULL || b == NULL || c == NULL || ATMP == NULL || a_original == NULL) {
+        fprintf(stderr, "Error: No se pudo asignar memoria\n");
         MPI_Abort(MPI_COMM_WORLD, 1);
+        free(a);
+        free(b);
+        free(c);
+        free(ATMP);
+        free(a_original);
+        return 1;
     }
-
-    // Inicializar el bloque de la matriz a
+    
+    // Inicializar los bloques según la especificación de la práctica
+    generar_matriz_original(a, bloqtam, fila, columna);
+    
+    // Guardar una copia de la matriz original A para verificar después
     for (i = 0; i < bloqtam * bloqtam; i++) {
-        a[i] = (i + 1) * (double)(fila * columna + 1) * (fila * columna + 1) / (bloqtam * bloqtam); //correccion de float a double
+        a_original[i] = a[i];
     }
-
-    // Inicializar el bloque de la matriz b (matriz identidad por bloques)
+    
+    // B es la matriz identidad
     for (i = 0; i < bloqtam * bloqtam; i++) {
-        int ii = i / bloqtam;
-        int jj = i % bloqtam;
-        if (fila == columna && ii == jj) {
-            b[i] = 1.0;
-        } else {
-            b[i] = 0.0;
-        }
+        int row = i / bloqtam;
+        int col = i % bloqtam;
+        b[i] = (row == col) ? 1.0 : 0.0;
     }
-
-    // Inicializar el bloque de la matriz c
+    
+    // Inicializar c a cero - NOTA: La matriz c se inicializa a cero dentro de la función mult
     for (i = 0; i < bloqtam * bloqtam; i++) {
         c[i] = 0.0;
     }
-
-    // Copiar el bloque de la matriz a a atmp para la comprobación final
-    for (i = 0; i < bloqtam * bloqtam; i++) {
-        atmp[i] = a[i];
+    
+    // Desplazamiento inicial de las matrices a y b para el algoritmo de Cannon
+    // Desplazar a a la izquierda fila veces
+    int desplazamiento = fila;
+    for (i = 0; i < desplazamiento; i++) {
+        // Uso de comunicaciones no bloqueantes para evitar interbloqueos
+        MPI_Isend(a, bloqtam * bloqtam, MPI_DOUBLE, izquierda, 100 + i, MPI_COMM_WORLD, &request[0]);
+        MPI_Irecv(ATMP, bloqtam * bloqtam, MPI_DOUBLE, derecha, 100 + i, MPI_COMM_WORLD, &request[1]);
+        
+        // Esperar a que se completen ambas operaciones con MPI_Wait individuales
+        MPI_Wait(&request[0], &status[0]);
+        MPI_Wait(&request[1], &status[1]);
+        
+        // Intercambiar a y ATMP
+        double *temp = a;
+        a = ATMP;
+        ATMP = temp;
     }
-
-    // Desplazamiento inicial de los bloques de las matrices a y b
-    int despl_fila = fila % r;
-    int origen_a = mifila[(columna + despl_fila) % r];
-    int destino_a = mifila[(columna - despl_fila + r) % r];
-    printf("Proceso %d: Desplazamiento inicial a: origen_a = %d, destino_a = %d\n", myrank, origen_a, destino_a);
-
-    if (origen_a != myrank) { // Corregido
-        MPI_Send(a, bloqtam * bloqtam, MPI_DOUBLE, destino_a, 100, MPI_COMM_WORLD);
-        printf("Proceso %d: Enviando a a %d, tag 100\n", myrank, destino_a);
-        MPI_Recv(a, bloqtam * bloqtam, MPI_DOUBLE, origen_a, 100, MPI_COMM_WORLD, &status);
-        printf("Proceso %d: Recibido a de %d, tag 100\n", myrank, origen_a);
-    } else {
-        printf("Proceso %d: No se realiza el desplazamiento inicial de a\n", myrank);
+    
+    // Barrera para asegurar que todos los procesos han terminado el desplazamiento de a
+    MPI_Barrier(MPI_COMM_WORLD);
+    
+    // Desplazar b hacia arriba columna veces
+    desplazamiento = columna;
+    for (i = 0; i < desplazamiento; i++) {
+        // Uso de comunicaciones no bloqueantes para evitar interbloqueos
+        MPI_Isend(b, bloqtam * bloqtam, MPI_DOUBLE, arriba, 200 + i, MPI_COMM_WORLD, &request[0]);
+        MPI_Irecv(ATMP, bloqtam * bloqtam, MPI_DOUBLE, abajo, 200 + i, MPI_COMM_WORLD, &request[1]);
+        
+        // Esperar a que se completen ambas operaciones con MPI_Wait individuales
+        MPI_Wait(&request[0], &status[0]);
+        MPI_Wait(&request[1], &status[1]);
+        
+        // Intercambiar b y ATMP
+        double *temp = b;
+        b = ATMP;
+        ATMP = temp;
     }
-
-
-    int despl_col = columna % r;
-    int origen_b = ((fila + despl_col) % r) * r + columna;
-    int destino_b = ((fila - despl_col + r) % r) * r + columna;
-    printf("Proceso %d: Desplazamiento inicial b: origen_b = %d, destino_b = %d\n", myrank, origen_b, destino_b);
-
-    if (origen_b != myrank) { // Corregido
-        MPI_Send(b, bloqtam * bloqtam, MPI_DOUBLE, destino_b, 200, MPI_COMM_WORLD);
-        printf("Proceso %d: Enviando b a %d, tag 200\n", myrank, destino_b);
-        MPI_Recv(b, bloqtam * bloqtam, MPI_DOUBLE, origen_b, 200, MPI_COMM_WORLD, &status);
-        printf("Proceso %d: Recibido b de %d, tag 200\n", myrank, origen_b);
-    } else {
-        printf("Proceso %d: No se realiza el desplazamiento inicial de b\n", myrank);
-    }
-
+    
+    // Barrera para asegurar que todos los procesos han terminado el desplazamiento de b
+    MPI_Barrier(MPI_COMM_WORLD);
+    
     // Algoritmo de Cannon
-    for (etapa = 0; etapa < r; etapa++) {
+    for (k = 0; k < r; k++) {
+        // Multiplicar los bloques a y b, acumulando en c
         mult(a, b, c, bloqtam);
-        printf("Proceso %d: Multiplicación en etapa %d\n", myrank, etapa);
-
-        // Etiquetas de mensaje diferentes en cada iteración
-        int tag_a_send = 300 + etapa;
-        int tag_a_recv = 400 + etapa;
-        int tag_b_send = 500 + etapa;
-        int tag_b_recv = 600 + etapa;
-
-        printf("Proceso %d: Antes de enviar a, etapa %d, izquierda = %d, tag_a_send = %d\n", myrank, etapa, izquierda, tag_a_send);
-        MPI_Send(a, bloqtam * bloqtam, MPI_DOUBLE, izquierda, tag_a_send, MPI_COMM_WORLD);
-        printf("Proceso %d: Enviando a a %d, tag %d\n", myrank, izquierda, tag_a_send);
-        MPI_Recv(a, bloqtam * bloqtam, MPI_DOUBLE, derecha, tag_a_recv, MPI_COMM_WORLD, &status);
-        printf("Proceso %d: Recibido a de %d, tag %d\n", myrank, derecha, tag_a_recv);
-
-        printf("Proceso %d: Antes de enviar b, etapa %d, arriba = %d, tag_b_send = %d\n", myrank, etapa, arriba, tag_b_send);
-        MPI_Send(b, bloqtam * bloqtam, MPI_DOUBLE, arriba, tag_b_send, MPI_COMM_WORLD);
-        printf("Proceso %d: Enviando b a %d, tag %d\n", myrank, arriba, tag_b_send);
-        MPI_Recv(b, bloqtam * bloqtam, MPI_DOUBLE, abajo, tag_b_recv, MPI_COMM_WORLD, &status);
-        printf("Proceso %d: Recibido b de %d, tag %d\n", myrank, abajo, tag_b_recv);
+        
+        // Desplazar a a la izquierda una posición usando comunicaciones no bloqueantes
+        MPI_Isend(a, bloqtam * bloqtam, MPI_DOUBLE, izquierda, 300 + k, MPI_COMM_WORLD, &request[0]);
+        MPI_Irecv(ATMP, bloqtam * bloqtam, MPI_DOUBLE, derecha, 300 + k, MPI_COMM_WORLD, &request[1]);
+        
+        // Esperar a que se completen ambas operaciones con MPI_Wait individuales
+        MPI_Wait(&request[0], &status[0]);
+        MPI_Wait(&request[1], &status[1]);
+        
+        // Intercambiar a y ATMP
+        double *temp = a;
+        a = ATMP;
+        ATMP = temp;
+        
+        // Barrera para sincronizar antes del desplazamiento de b
+        MPI_Barrier(MPI_COMM_WORLD);
+        
+        // Desplazar b hacia arriba una posición usando comunicaciones no bloqueantes
+        MPI_Isend(b, bloqtam * bloqtam, MPI_DOUBLE, arriba, 400 + k, MPI_COMM_WORLD, &request[0]);
+        MPI_Irecv(ATMP, bloqtam * bloqtam, MPI_DOUBLE, abajo, 400 + k, MPI_COMM_WORLD, &request[1]);
+        
+        // Esperar a que se completen ambas operaciones con MPI_Wait individuales
+        MPI_Wait(&request[0], &status[0]);
+        MPI_Wait(&request[1], &status[1]);
+        
+        // Intercambiar b y ATMP
+        temp = b;
+        b = ATMP;
+        ATMP = temp;
+        
+        // Barrera para sincronizar antes de la siguiente iteración
+        MPI_Barrier(MPI_COMM_WORLD);
     }
-
-    // Comprobar los resultados
-    numerror = 0;
+    
+    // Verificar los resultados
+    int numerror = 0;
     for (i = 0; i < bloqtam * bloqtam; i++) {
-        if (fabs(atmp[i] - c[i]) > 0.0000001) {
+        if (fabs(a_original[i] - c[i]) > 0.0000001) {
             numerror++;
+            // Opcional: mostrar los valores que causan error para debugging
+            if (numerror < 10) { // Limitar a 10 errores para no saturar la salida
+                printf("Proceso %d: Error en posición %d: esperado=%f, obtenido=%f\n", 
+                       myrank, i, a_original[i], c[i]);
+            }
         }
     }
-
-    // Recolectar el número de errores de todos los procesos en el proceso 0
+    
+    // Recopilar y mostrar los errores
     if (myrank == 0) {
-        printf("nproc = %d\n", nproc); //agregado
-        errores = (int *)malloc(nproc * sizeof(int));
-        if (errores == NULL) {
-            printf("Error: No se pudo reservar memoria para errores en el proceso 0\n");
-            MPI_Abort(MPI_COMM_WORLD, 1);
+        printf("Proceso: %d. Numero de errores: %d\n", myrank, numerror);
+        
+        int otros_errores;
+        for (i = 1; i < numprocs; i++) {
+            MPI_Recv(&otros_errores, 1, MPI_INT, i, 500, MPI_COMM_WORLD, &status[0]);
+            printf("Proceso: %d. Numero de errores: %d\n", i, otros_errores);
         }
+    } else {
+        MPI_Send(&numerror, 1, MPI_INT, 0, 500, MPI_COMM_WORLD);
     }
-    MPI_Gather(&numerror, 1, MPI_INT, errores, 1, MPI_INT, 0, MPI_COMM_WORLD);
-
-    // El proceso 0 imprime el número de errores de cada proceso
-    if (myrank == 0) {
-        for (i = 0; i < nproc; i++) {
-            printf("Proceso: %d. Numero de errores: %d\n", i, errores[i]);
-        }
-        free(errores);
-    }
-
-    // Liberar la memoria reservada
+    
+    // Liberar memoria
     free(a);
     free(b);
     free(c);
-    free(atmp);
-    free(mifila);
-
-    // Finalizar el entorno MPI
+    free(ATMP);
+    free(a_original);
+    
     MPI_Finalize();
     return 0;
 }
-
