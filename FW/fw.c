@@ -1,20 +1,12 @@
-// Author:         Tanase, Dragos
-// Date:            2 Mar 2020
-// Title:           Floyd Warshall MPI Implementation
-//
-//                  DSAP P5
-
-// Si se le pasa por argumento algun numero, el codigo lo tomara
-// como el numero de vertices a tratar. Si no se pasa ninguno
-// se tomara por defecto el valor 5.
+// Autor: Jaime Hernández Delgado
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <mpi.h>
 
-const int KMAXNPROCS = 8;     // Maximo numero de procesos
-const int KMAXN = 1000;   // Maximo numero de Vertices en el grafo
-const float INFINITY_FLOAT = 999999.0f; // Representa infinito para pesos
+const int KMAXNPROCS = 8;    
+const int KMAXN = 1000; 
+const float INFINITY_FLOAT = 999999.0f;
 
 // Codigo copiado del ejemplo del profesor.
 // Crea un array bidimensional asegurandose de que las posiciones
@@ -49,7 +41,7 @@ int **Crear_matriz_caminos_consecutivo(int Filas, int Columnas) {
     return matriz;
 }
 
-// Codigo copiado del ejemplo del profesor.
+// Codigo copiado del ejemplo
 // Crea un array bidimensional asegurandose de que las posiciones
 // reservadas en memoria son contiguas. Tipo FLOAT.
 float **Crear_matriz_pesos_consecutivo(int Filas, int Columnas) {
@@ -82,12 +74,8 @@ float **Crear_matriz_pesos_consecutivo(int Filas, int Columnas) {
     return matriz;
 }
 
-// Codigo copiado del ejemplo del profesor.
-//
+// Codigo copiado del ejemplo
 void Definir_Grafo(int n, float **dist, int **caminos) {
-    // Inicializamos la matriz de pesos y la de caminos para el algoritmos de Floyd-Warshall.
-    // Un 0 en la matriz de pesos indica que no hay arco.
-    // Para la matriz de caminos se supone que los vertices se numeran de 1 a n.
     int i, j;
     for (i = 0; i < n; ++i) {
         for (j = 0; j < n; ++j) {
@@ -216,7 +204,7 @@ int main(int argc, char **argv) {
     MPI_Bcast(&n, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
     // Calculo porciones
-    int rows_per_process = (n + nThreads - 1) / nThreads; // Ceiling division
+    int rows_per_process = (n + nThreads - 1) / nThreads;
 
     // Necesario para el scatterv y gatherv
     int *sendCounts = (int *)malloc(sizeof(int) * nThreads);
