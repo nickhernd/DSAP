@@ -1,334 +1,339 @@
-// Jaime Hernandez Delgado
+// Author:         Tanase, Dragos
+// Date:            2 Mar 2020
+// Title:           Floyd Warshall MPI Implementation
+//
+//                  DSAP P5
+
+// Si se le pasa por argumento algun numero, el codigo lo tomara
+// como el numero de vertices a tratar. Si no se pasa ninguno
+// se tomara por defecto el valor 5.
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <math.h>
 #include <mpi.h>
-#include <malloc.h>
 
-#define maxn 1000 // Máximo número de vertices en el grafo
-#define maxnumprocs 8 // Máximo numero de procesos
+const int KMAXNPROCS = 8;     // Maximo numero de procesos
+const int KMAXN = 1000;   // Maximo numero de Vertices en el grafo
+const float INFINITY_FLOAT = 999999.0f; // Representa infinito para pesos
 
-int main(int argc, char **argv) {
-   float **Crear_matriz_pesos_consecutivo(int, int);
-   int **Crear_matriz_caminos_consecutivo(int, int);
-   void printMatrizCaminos(int **, int, int);
-   void printMatrizPesos(float **, int, int);
-   void calcula_camino(float **, int **, int);
-   void Definir_Grafo(int, float **, int **);
+// Codigo copiado del ejemplo del profesor.
+// Crea un array bidimensional asegurandose de que las posiciones
+// reservadas en memoria son contiguas. Tipo INT.
+int **Crear_matriz_caminos_consecutivo(int Filas, int Columnas) {
+    // crea un array de 2 dimensiones en posiciones contiguas de memoria
+    int *mem_matriz;
+    int **matriz;
+    int fila, col;
+    if (Filas <= 0) {
+        printf("El numero de filas debe ser mayor que cero\n");
+        return NULL;
+    }
+    if (Columnas <= 0) {
+        printf("El numero de columnas debe ser mayor que cero\n");
+        return NULL;
+    }
+    mem_matriz = (int *)malloc(Filas * Columnas * sizeof(int));
+    if (mem_matriz == NULL) {
+        printf("Insuficiente espacio de memoria\n");
+        return NULL;
+    }
+    matriz = (int **)malloc(Filas * sizeof(int *));
+    if (matriz == NULL) {
+        printf("Insuficiente espacio de memoria\n");
+        free(mem_matriz);
+        return NULL;
+    }
+    for (fila = 0; fila < Filas; fila++)
+        matriz[fila] = mem_matriz + (fila * Columnas);
 
-   int myrank, numprocs, nfilas, resto, nlocal, sender;
-   int i, j, k, n;
-   double t1,t2;
-   float **dist, *aux; 
-   int **caminos, *auxC;
-   int fila_k;
+    return matriz;
+}
 
-   MPI_Status estado;
+// Codigo copiado del ejemplo del profesor.
+// Crea un array bidimensional asegurandose de que las posiciones
+// reservadas en memoria son contiguas. Tipo FLOAT.
+float **Crear_matriz_pesos_consecutivo(int Filas, int Columnas) {
+    // crea un array de 2 dimensiones en posiciones contiguas de memoria
+    float *mem_matriz;
+    float **matriz;
+    int fila, col;
+    if (Filas <= 0) {
+        printf("El numero de filas debe ser mayor que cero\n");
+        return NULL;
+    }
+    if (Columnas <= 0) {
+        printf("El numero de columnas debe ser mayor que cero\n");
+        return NULL;
+    }
+    mem_matriz = (float *)malloc(Filas * Columnas * sizeof(float));
+    if (mem_matriz == NULL) {
+        printf("Insuficiente espacio de memoria\n");
+        return NULL;
+    }
+    matriz = (float **)malloc(Filas * sizeof(float *));
+    if (matriz == NULL) {
+        printf("Insuficiente espacio de memoria\n");
+        free(mem_matriz);
+        return NULL;
+    }
+    for (fila = 0; fila < Filas; fila++)
+        matriz[fila] = mem_matriz + (fila * Columnas);
 
-   MPI_Init(&argc, &argv);
-   MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
-   MPI_Comm_size(MPI_COMM_WORLD, &numprocs);
+    return matriz;
+}
 
-   if (numprocs > maxnumprocs) {
-      printf("Numero de procesos superado ...\n");
-      MPI_Finalize();
-      exit(0);
-   }
-
-   if (myrank == 0) {
-      printf("Numero de vertices en el grafo: ");
-      scanf("%d", &n);
-      if (n > maxn) {
-         printf("El numero de vertices (%d) sobrepasa el maximo (%d)\n", n, maxn);
-         MPI_Finalize();
-         exit(0);
-      }
-   }
-
-   // Mandar n al resto de procesos mediante Broadcast
-   MPI_Bcast(&n, 1, MPI_INT, 0, MPI_COMM_WORLD);
-
-   if (myrank == 0) {
-      dist = Crear_matriz_pesos_consecutivo(n,n); // dimensionar matriz de pesos
-      caminos = Crear_matriz_caminos_consecutivo(n,n); // dimensionar matriz de caminos
-      Definir_Grafo(n,dist,caminos); // crear el grafo
-
-      // calcular el reparto de filas entre procesos
-      nfilas = n / numprocs;
-      resto = n % numprocs;
-      nlocal = nfilas + resto;
-   }
-   else {
-      // calcular el reparto de filas
-      nfilas = n / numprocs;
-      resto = n % numprocs;
-      nlocal = nfilas;
-
-      dist = Crear_matriz_pesos_consecutivo(nlocal,n); // dimensionar matriz de pesos
-      caminos = Crear_matriz_caminos_consecutivo(nlocal,n); // dimensionar matriz de caminos
-   }
-
-   // Validate matrix dimensions before creation
-   if (nlocal <= 0 || n <= 0) {
-       printf("Process %d: Invalid matrix dimensions: nlocal = %d, n = %d\n", myrank, nlocal, n);
-       MPI_Abort(MPI_COMM_WORLD, 1);
-   }
-
-   // Debugging: Print row distribution details
-   printf("Process %d: nfilas = %d, resto = %d, nlocal = %d\n", myrank, nfilas, resto, nlocal);
-
-   // MPI_Scatter para repartir las matrices de peso y de caminos.
-   if (myrank != 0) {
-      MPI_Scatter(&dist[0][0], nfilas*n, MPI_FLOAT, &dist[0][0], nfilas*n, MPI_FLOAT, 0, MPI_COMM_WORLD);
-      MPI_Scatter(&caminos[0][0], nfilas*n, MPI_INT, &caminos[0][0], nfilas*n, MPI_INT, 0, MPI_COMM_WORLD);
-   }
-   else {
-      MPI_Scatter(&dist[resto][0], nfilas*n, MPI_FLOAT, MPI_IN_PLACE, nfilas*n, MPI_FLOAT, 0, MPI_COMM_WORLD);
-      MPI_Scatter(&caminos[resto][0], nfilas*n, MPI_INT, MPI_IN_PLACE, nfilas*n, MPI_INT, 0, MPI_COMM_WORLD);
-   }
-
-   // Reservar memoria para auxiliares de las matrices (float e int)
-   aux = malloc(n * sizeof(float));
-   auxC = malloc(n * sizeof(int));
-
-   for (int k = 0; k < n; k++) {
-      // Calcular el número de proceso que almacena la fila k: sender
-      for (int i = 0; i < numprocs; i++) {
-         if (k < resto + nfilas * (i + 1)) {
-            sender = i;
-            break;
-         }
-      }
-      // buscar la fila k correcta
-      if (sender == 0) {
-         fila_k = k;
-      }
-      else {
-         fila_k = k - (nfilas * sender) - resto;
-      }
-      if (myrank == sender) {
-         for (int m = 0; m < n; m++) {
-            // Hacer aux igual a la fila k de la matriz de pesos, dist.
-            aux[m] = dist[fila_k][m];
-            // printf("valores aux = %f \n", aux[m]);
-            // Hacer auxC igual a la fila k de la matriz de caminos, caminos.
-            auxC[m] = caminos[fila_k][m];
-            // printf("valores auxC = %f \n", auxC[m]);
-         }
-      }
-      //printf("Sender %d haciendo broadcast. \n", sender);
-      // Broadcast de aux y auxC
-      MPI_Bcast(&aux[0], n, MPI_FLOAT, sender, MPI_COMM_WORLD);
-      MPI_Bcast(&auxC[0], n, MPI_INT, sender, MPI_COMM_WORLD);
-
-      for (int i = 0; i < nlocal; i++) {
-         for (int j = 0; j < n; j++) {
-            if ((dist[i][k] * aux[j] != 0)) {
-               if ((dist[i][k] + aux[j] < dist[i][j]) || (dist[i][j] == 0)) {
-                  dist[i][j] = dist[i][k] + aux[j];
-                  caminos[i][j] = auxC[j];
-               }
+// Codigo copiado del ejemplo del profesor.
+//
+void Definir_Grafo(int n, float **dist, int **caminos) {
+    // Inicializamos la matriz de pesos y la de caminos para el algoritmos de Floyd-Warshall.
+    // Un 0 en la matriz de pesos indica que no hay arco.
+    // Para la matriz de caminos se supone que los vertices se numeran de 1 a n.
+    int i, j;
+    for (i = 0; i < n; ++i) {
+        for (j = 0; j < n; ++j) {
+            if (i == j)
+                dist[i][j] = 0;
+            else {
+                dist[i][j] = (11.0 * rand() / (RAND_MAX + 1.0)); // aleatorios 0 <= dist < 11
+                dist[i][j] = ((double)((int)(dist[i][j] * 10))) / 10; // truncamos a 1 decimal
+                if (dist[i][j] < 2) dist[i][j] = INFINITY_FLOAT; // establecemos algunos a infinito
             }
-         }
-      }
-   }
-   
-   // MPI_Gather para recoger las matrices de peso y de caminos.
-   if (myrank != 0) {
-      MPI_Gather(&dist[0][0], nfilas*n, MPI_FLOAT, &dist[0][0], nfilas*n, MPI_FLOAT, 0, MPI_COMM_WORLD);
-      MPI_Gather(&caminos[0][0], nfilas*n, MPI_INT, &caminos[0][0], nfilas*n, MPI_INT, 0, MPI_COMM_WORLD);
-   }
-   else {
-      MPI_Gather(MPI_IN_PLACE, nfilas*n, MPI_FLOAT, &dist[resto][0], nfilas*n, MPI_FLOAT, 0, MPI_COMM_WORLD);
-      MPI_Gather(MPI_IN_PLACE, nfilas*n, MPI_INT, &caminos[resto][0], nfilas*n, MPI_INT, 0, MPI_COMM_WORLD);
-   }
-
-   // calcula camino
-   if (myrank == 0) {
-      // sólo cuando el nº de vértices sea menor o igual que 10 se mostrará
-      // la matriz de pesos y la de distancias final
-      if (n <= 10) {
-         printMatrizPesos(dist,n,n);
-         printMatrizCaminos(caminos,n,n);
-      }
-      calcula_camino(dist, caminos, n);
-   }
-
-   free(aux);
-   free(auxC);
-   free(dist);
-   free(caminos);
-
-   MPI_Finalize();
-   return 0;
-}
-
-void Definir_Grafo(int n,float **dist,int **caminos)
-{
-// Inicializamos la matriz de pesos y la de caminos para el algoritmos de Floyd-Warshall. 
-// Un 0 en la matriz de pesos indica que no hay arco.
-// Para la matriz de caminos se supone que los vertices se numeran de 1 a n.
-  int i,j;
-  for (i = 0; i < n; ++i) {
-      for (j = 0; j < n; ++j) {
-          if (i==j)
-             dist[i][j]=0;
-          else {
-             dist[i][j]= (11.0 * rand() / ( RAND_MAX + 1.0 )); // aleatorios 0 <= dist < 11
-             dist[i][j] = ((double)((int)(dist[i][j]*10)))/10; // truncamos a 1 decimal
-             if (dist[i][j] < 2) dist[i][j]=0; // establecemos algunos a 0 
-          }
-          if (dist[i][j] != 0)
-             caminos[i][j] = i+1;
-          else
-             caminos[i][j] = 0;
-      }
-  }
-}
-
-void calcula_camino(float **a, int **b, int n)
-{
- int i,count=2, count2;
- int anterior; 
- int *camino;
- int inicio=-1, fin=-1;
-
- while ((inicio < 0) || (inicio >n) || (fin < 0) || (fin > n)) {
-    printf("Vertices inicio y final: (0 0 para salir) ");
-    scanf("%d %d",&inicio, &fin);
- }
- while ((inicio != 0) && (fin != 0)) {
-    anterior = fin;
-    while (b[inicio-1][anterior-1] != inicio) {
-       anterior = b[inicio-1][anterior-1];
-       count = count + 1;
+            if (dist[i][j] != INFINITY_FLOAT && i != j)
+                caminos[i][j] = i + 1;
+            else
+                caminos[i][j] = 0;
+        }
     }
-    count2 = count;
-    camino = malloc(count * sizeof(int));
-    anterior = fin;
-    camino[count-1]=fin;
-    while (b[inicio-1][anterior-1] != inicio) {
-       anterior = b[inicio-1][anterior-1];
-       count = count - 1;
-       camino[count-1]=anterior;
-    }
-    camino[0] = inicio;
-    printf("\nCamino mas corto de %d a %d:\n", inicio, fin);
-    printf("          Peso: %5.1f\n", a[inicio-1][fin-1]);
-    printf("        Camino: ");
-    for (i=0; i<count2; i++) printf("%d ",camino[i]);
-    printf("\n");
-    free(camino);
-    inicio = -1;
-    while ((inicio < 0) || (inicio >n) || (fin < 0) || (fin > n)) {
-       printf("Vertices inicio y final: (0 0 para salir) ");
-       scanf("%d %d",&inicio, &fin);
-    }
-
- }
-}
-
-float **Crear_matriz_pesos_consecutivo(int Filas, int Columnas)
-{
-// crea un array de 2 dimensiones en posiciones contiguas de memoria
- float *mem_matriz;
- float **matriz;
- int fila, col;
- if (Filas <=0) 
-    {
-        printf("El numero de filas debe ser mayor que cero\n");
-        return;
-    }
- if (Columnas <= 0)
-    {
-        printf("El numero de filas debe ser mayor que cero\n");
-        return;
-    }
- mem_matriz = malloc(Filas * Columnas * sizeof(float));
- if (mem_matriz == NULL) 
-	{
-		printf("Insuficiente espacio de memoria\n");
-		return;
-	}
- matriz = malloc(Filas * sizeof(float *));
- if (matriz == NULL) 
-	{
-		printf ("Insuficiente espacio de memoria\n");
-		return;
-	}
- for (fila=0; fila<Filas; fila++)
-    matriz[fila] = mem_matriz + (fila*Columnas);
- return matriz;
-}
-
-int **Crear_matriz_caminos_consecutivo(int Filas, int Columnas)
-{
-// crea un array de 2 dimensiones en posiciones contiguas de memoria
- int *mem_matriz;
- int **matriz;
- int fila, col;
- if (Filas <=0) 
-    {
-        printf("El numero de filas debe ser mayor que cero\n");
-        return;
-    }
- if (Columnas <= 0)
-    {
-        printf("El numero de filas debe ser mayor que cero\n");
-        return;
-    }
- mem_matriz = malloc(Filas * Columnas * sizeof(int));
- if (mem_matriz == NULL) 
-	{
-		printf("Insuficiente espacio de memoria\n");
-		return;
-	}
- matriz = malloc(Filas * sizeof(int *));
- if (matriz == NULL) 
-	{
-		printf ("Insuficiente espacio de memoria\n");
-		return;
-	}
- for (fila=0; fila<Filas; fila++)
-    matriz[fila] = mem_matriz + (fila*Columnas);
- return matriz;
 }
 
 void printMatrizCaminos(int **a, int fila, int col) {
-        int i, j;
-        char buffer[10];
-        printf("     ");
-        for (i = 0; i < col; ++i){
-                j=sprintf(buffer, "%c%d",'V',i+1 );
-                printf("%5s", buffer);
-       }
+    int i, j;
+    char buffer[10];
+    printf("      ");
+    for (i = 0; i < col; ++i) {
+        j = sprintf(buffer, "V%d", i + 1);
+        printf("%5s", buffer);
+    }
+    printf("\n");
+    for (i = 0; i < fila; ++i) {
+        j = sprintf(buffer, "V%d", i + 1);
+        printf("%5s", buffer);
+        for (j = 0; j < col; ++j)
+            printf("%5d", a[i][j]);
         printf("\n");
-        for (i = 0; i < fila; ++i) {
-                j=sprintf(buffer, "%c%d",'V',i+1 );
-                printf("%5s", buffer);
-                for (j = 0; j < col; ++j)
-                        printf("%5d", a[i][j]);
-                printf("\n");
-        }
-        printf("\n");
+    }
+    printf("\n");
 }
 
 void printMatrizPesos(float **a, int fila, int col) {
-        int i, j;
-        char buffer[10];
-        printf("     ");
-        for (i = 0; i < col; ++i){
-                j=sprintf(buffer, "%c%d",'V',i+1 );
-                printf("%5s", buffer);
-       }
-        printf("\n");
-        for (i = 0; i < fila; ++i) {
-                j=sprintf(buffer, "%c%d",'V',i+1 );
-                printf("%5s", buffer);
-                for (j = 0; j < col; ++j)
-                        printf("%5.1f", a[i][j]);
-                printf("\n");
+    int i, j;
+    char buffer[10];
+    printf("      ");
+    for (i = 0; i < col; ++i) {
+        j = sprintf(buffer, "V%d", i + 1);
+        printf("%6s", buffer);
+    }
+    printf("\n");
+    for (i = 0; i < fila; ++i) {
+        j = sprintf(buffer, "V%d", i + 1);
+        printf("%6s", buffer);
+        for (j = 0; j < col; ++j) {
+            if (a[i][j] == INFINITY_FLOAT)
+                printf("   INF");
+            else
+                printf("%6.1f", a[i][j]);
         }
         printf("\n");
+    }
+    printf("\n");
+}
+
+/* Desasignamos un puntero a un array 2d*/
+void deallocate_array_int(int **array, int row_dim) {
+    if (array == NULL || row_dim <= 0) return;
+    free(array[0]);
+    free(array);
+}
+
+void deallocate_array_float(float **array, int row_dim) {
+    if (array == NULL || row_dim <= 0) return;
+    free(array[0]);
+    free(array);
+}
+
+int main(int argc, char **argv) {
+    MPI_Status status;
+    int ierr, rank, nThreads;
+    int n = 0, **caminos = NULL;
+    float **dist = NULL;
+
+    MPI_Init(&argc, &argv);
+    MPI_Comm_size(MPI_COMM_WORLD, &nThreads);
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+    if (nThreads < 2) {
+        if (rank == 0)
+            printf("Debe haber como minimo 2 hilos para ejecutar este programa.\n");
+        MPI_Finalize();
+        return 0;
+    }
+
+    if (nThreads > KMAXNPROCS) {
+        if (rank == 0)
+            printf("El numero de procesos (%d) sobrepasa el maximo (%d).\nSe conservarán (%d) procesos.\n", nThreads, KMAXNPROCS, KMAXNPROCS);
+        nThreads = KMAXNPROCS;
+    }
+
+    // Obtencion de N
+    if (rank == 0) {
+        if (argc == 1) {
+            printf("Introduce numero de vertices del grafo: \n");
+            if (!scanf("%d", &n))
+                printf("Error en introduccion de datos, puede\nque el funcionamiento no sea el deseado...\n");
+
+            if (n > KMAXN) {
+                printf("El numero de vertices (%d) sobrepasa el maximo (%d)\nNos quedamos con %d\n", n, KMAXN, KMAXN);
+                n = KMAXN;
+            } else if (n <= 0) {
+                printf("El numero de vertices debe ser mayor que cero. Se usara el valor por defecto: 5\n");
+                n = 5;
+            } else
+                printf("El grafo tendra %d vertices.\n", n);
+        } else {
+            n = atoi(argv[1]);
+            if (n <= 0) {
+                printf("El numero de vertices debe ser mayor que cero. Se usara el valor por defecto: 5\n");
+                n = 5;
+            } else if (n > KMAXN) {
+                printf("El numero de vertices (%d) sobrepasa el maximo (%d)\nNos quedamos con %d\n", n, KMAXN, KMAXN);
+                n = KMAXN;
+            } else
+                printf("Numero de vertices en el grafo: %d\n", n);
+        }
+    }
+
+    // Mando el numero de vertices a los esclavos
+    MPI_Bcast(&n, 1, MPI_INT, 0, MPI_COMM_WORLD);
+
+    // Calculo porciones
+    int rows_per_process = (n + nThreads - 1) / nThreads; // Ceiling division
+
+    // Necesario para el scatterv y gatherv
+    int *sendCounts = (int *)malloc(sizeof(int) * nThreads);
+    int *displs = (int *)malloc(sizeof(int) * nThreads);
+
+    // Preparar variables donde se guardara la informacion distribuida
+    int my_rows = (rank < n % nThreads) ? rows_per_process : rows_per_process - 1;
+    if (my_rows < 0) my_rows = 0;
+    int **auxCaminos = Crear_matriz_caminos_consecutivo(my_rows, n);
+    float **auxPesos = Crear_matriz_pesos_consecutivo(my_rows, n);
+
+    if (rank == 0) {
+        dist = Crear_matriz_pesos_consecutivo(n, n);
+        caminos = Crear_matriz_caminos_consecutivo(n, n);
+        Definir_Grafo(n, dist, caminos);
+        if (n <= 10) {
+            printf("Matriz de Pesos Inicial:\n");
+            printMatrizPesos(dist, n, n);
+            printf("Matriz de Caminos Inicial:\n");
+            printMatrizCaminos(caminos, n, n);
+        }
+    }
+
+    for (int i = 0; i < nThreads; i++) {
+        int start_row = i * rows_per_process;
+        int num_rows = (i < n % nThreads) ? rows_per_process : rows_per_process - 1;
+        if (num_rows < 0) num_rows = 0;
+        sendCounts[i] = num_rows * n;
+        displs[i] = start_row * n;
+    }
+
+    if (sendCounts == NULL || displs == NULL) {
+        printf("Error en reserva de memoria para sendCounts o displs, hilo %d\n", rank);
+        MPI_Abort(MPI_COMM_WORLD, 1);
+    }
+
+    MPI_Scatterv(rank == 0 ? &caminos[0][0] : NULL, sendCounts, displs, MPI_INT,
+                 &auxCaminos[0][0], my_rows * n, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Scatterv(rank == 0 ? &dist[0][0] : NULL, sendCounts, displs, MPI_FLOAT,
+                 &auxPesos[0][0], my_rows * n, MPI_FLOAT, 0, MPI_COMM_WORLD);
+
+    // FW MPI
+    for (int k = 0; k < n; k++) {
+        int owner_rank = k / rows_per_process;
+        int owner_row = k % rows_per_process;
+        float *broadcast_row_pesos = NULL;
+        int *broadcast_row_caminos = NULL;
+
+        if (rank == owner_rank) {
+            if (owner_row < my_rows) {
+                broadcast_row_pesos = auxPesos[owner_row];
+                broadcast_row_caminos = auxCaminos[owner_row];
+            } else {
+                // This should ideally not happen given the distribution logic
+                broadcast_row_pesos = (float *)malloc(n * sizeof(float));
+                broadcast_row_caminos = (int *)malloc(n * sizeof(int));
+                for (int i = 0; i < n; ++i) {
+                    broadcast_row_pesos[i] = INFINITY_FLOAT; // Or some other default
+                    broadcast_row_caminos[i] = 0;
+                }
+            }
+        } else {
+            broadcast_row_pesos = (float *)malloc(n * sizeof(float));
+            broadcast_row_caminos = (int *)malloc(n * sizeof(int));
+        }
+
+        MPI_Bcast(broadcast_row_pesos, n, MPI_FLOAT, owner_rank, MPI_COMM_WORLD);
+        MPI_Bcast(broadcast_row_caminos, n, MPI_INT, owner_rank, MPI_COMM_WORLD);
+
+        for (int i = 0; i < my_rows; i++) {
+            for (int j = 0; j < n; j++) {
+                if (auxPesos[i][k] != INFINITY_FLOAT && broadcast_row_pesos[j] != INFINITY_FLOAT) {
+                    if (auxPesos[i][j] > auxPesos[i][k] + broadcast_row_pesos[j]) {
+                        auxPesos[i][j] = auxPesos[i][k] + broadcast_row_pesos[j];
+                        auxCaminos[i][j] = broadcast_row_caminos[j];
+                    }
+                }
+            }
+        }
+
+        if (rank != owner_rank) {
+            free(broadcast_row_pesos);
+            free(broadcast_row_caminos);
+        } else if (owner_row >= my_rows) {
+            free(broadcast_row_pesos);
+            free(broadcast_row_caminos);
+        }
+    }
+
+    MPI_Gatherv(&auxCaminos[0][0], my_rows * n, MPI_INT,
+                rank == 0 ? &caminos[0][0] : NULL, sendCounts, displs, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Gatherv(&auxPesos[0][0], my_rows * n, MPI_FLOAT,
+                rank == 0 ? &dist[0][0] : NULL, sendCounts, displs, MPI_FLOAT, 0, MPI_COMM_WORLD);
+
+    // Liberacion de memoria
+    if (rank == 0) {
+        if (n <= 10) {
+            printf("Matriz de Pesos Inicial:\n");
+            printMatrizPesos(dist, n, n);
+            printf("Matriz de Caminos Inicial:\n");
+            printMatrizCaminos(caminos, n, n);
+            printf("Matriz de Pesos Final:\n");
+            printMatrizPesos(dist, n, n);
+            printf("Matriz de Caminos Final:\n");
+            printMatrizCaminos(caminos, n, n);
+        } else {
+            printf("El numero de vertices (%d) es mayor que 10, no se mostraran las matrices finales.\n", n);
+        }
+
+        deallocate_array_float(dist, n);
+        deallocate_array_int(caminos, n);
+    }
+    deallocate_array_int(auxCaminos, my_rows);
+    deallocate_array_float(auxPesos, my_rows);
+    free(sendCounts);
+    free(displs);
+
+    MPI_Finalize();
+    return 0;
 }
